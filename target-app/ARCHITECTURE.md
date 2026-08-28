@@ -8,6 +8,7 @@ The **Target App** is a lightweight FastAPI-based microservice simulating a clou
 - **`requirements.txt`**: Python dependencies required by the application (`fastapi`, `uvicorn`, `pydantic`).
 - **`Dockerfile`**: Container definition for deployment.
 
+
 ## Exposed Endpoints
 - **`GET /`**: Health and root endpoint. Returns `{"status": "ok", "service": "target-app"}` and logs an `INFO` message describing a successful user request.
 - **`GET /simulate-error`**: Diagnostic endpoint designed to simulate real-world application crashes. It randomly executes one of three failure scenarios:
