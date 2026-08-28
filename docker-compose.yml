@@ -1,0 +1,30 @@
+services:
+  target-app:
+    build:
+      context: ./target-app
+      dockerfile: Dockerfile
+    container_name: target-app
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+
+  aiops-engine:
+    build:
+      context: ./aiops-engine
+      dockerfile: Dockerfile
+    container_name: aiops-engine
+    ports:
+      - "8001:8001"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - GROQ_MODEL=${GROQ_MODEL:-llama-3.3-70b-versatile}
+      - TARGET_APP_DIR=/target-app
+    volumes:
+      - ./target-app:/target-app:ro
+    depends_on:
+      - target-app
+    restart: unless-stopped
+
