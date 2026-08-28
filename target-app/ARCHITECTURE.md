@@ -6,7 +6,6 @@ The **Target App** is a lightweight FastAPI-based microservice simulating a clou
 ## Codebase Layout
 - **`main.py`**: The primary application entry point containing all route handlers, logging configurations, and simulated failure mechanisms.
 - **`requirements.txt`**: Python dependencies required by the application (`fastapi`, `uvicorn`, `pydantic`).
-- **`Dockerfile`**: Container definition for deployment.
 
 
 ## Exposed Endpoints

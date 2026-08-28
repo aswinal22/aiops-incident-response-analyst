@@ -27,10 +27,21 @@ def get_recent_buffer_logs() -> list[dict[str, Any]]:
     return list(log_buffer)
 
 
+from db import (
+    get_db_engine,
+    save_agent_traces_to_db,
+    save_incident_to_db,
+    save_log_to_db,
+)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    """Lifespan context manager to load ML model and compile LangGraph on startup."""
+    """Lifespan context manager to load ML model, connect DB, and compile LangGraph on startup."""
     global ml_model, investigation_graph
+
+    # Initialize Database Connection
+    get_db_engine()
 
     # Load ML Model
     model_path = Path(__file__).resolve().parent / "ml" / "model.joblib"
@@ -72,6 +83,8 @@ class LogIngestResponse(BaseModel):
     status: str
     prediction: str
     confidence: float | None = None
+    log_id: str | None = None
+    incident_id: str | None = None
     rca_report: str | None = None
     metrics: dict[str, Any] | None = None
 
@@ -84,6 +97,7 @@ def health_check() -> dict[str, str]:
         "status": "ok",
         "service": "aiops-engine",
         "model_loaded": str(ml_model is not None),
+        "database_connected": str(get_db_engine() is not None),
         "buffer_size": str(len(log_buffer)),
     }
 
@@ -137,9 +151,19 @@ async def ingest_logs(
             is_anomaly = True
             prediction_label = "Anomaly"
 
-    # 3. Trigger LangGraph investigation workflow if anomaly detected
+    # 3. Persist log to Supabase
+    log_id = save_log_to_db(
+        message=payload.message,
+        timestamp=payload.timestamp,
+        service=payload.service,
+        is_anomaly=is_anomaly,
+        confidence_score=confidence_val,
+    )
+
+    # 4. Trigger LangGraph investigation workflow if anomaly detected
     rca_report_text: str | None = None
     workflow_metrics: dict[str, Any] | None = None
+    incident_id: str | None = None
 
     if is_anomaly and investigation_graph is not None:
         print("[AIOps Engine] [ALERT] Anomaly detected! Triggering LangGraph Multi-Agent Workflow...")
@@ -154,6 +178,20 @@ async def ingest_logs(
             final_state = investigation_graph.invoke(initial_state)
             rca_report_text = final_state.get("rca_report")
             workflow_metrics = final_state.get("metrics")
+
+            # Persist Incident & Agent Traces to Supabase
+            if rca_report_text:
+                mttd = workflow_metrics.get("total_workflow_latency_ms", 0.0) / 1000.0 if workflow_metrics else None
+                incident_id = save_incident_to_db(
+                    trigger_log_id=log_id,
+                    rca_report_markdown=rca_report_text,
+                    service=payload.service,
+                    severity="High",
+                    mttd_seconds=mttd,
+                )
+                if incident_id and workflow_metrics:
+                    save_agent_traces_to_db(incident_id, workflow_metrics)
+
         except Exception as e:
             print(f"[AIOps Engine] Agent execution error: {e}")
             rca_report_text = f"Agent workflow encountered an error: {e}"
@@ -162,7 +200,10 @@ async def ingest_logs(
         status="received",
         prediction=prediction_label,
         confidence=confidence_val,
+        log_id=log_id,
+        incident_id=incident_id,
         rca_report=rca_report_text,
         metrics=workflow_metrics,
     )
+
 
