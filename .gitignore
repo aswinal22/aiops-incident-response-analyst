@@ -100,8 +100,11 @@ Thumbs.db
 desktop.ini
 
 # ==========================================
-# Logs & Temporary Files
+# Logs & Temporary Files & Local SQLite Databases
 # ==========================================
 *.log
 *.tmp
 *.temp
+*.db
+*.sqlite
+*.sqlite3
