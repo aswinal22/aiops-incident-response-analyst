@@ -100,6 +100,19 @@ Thumbs.db
 desktop.ini
 
 # ==========================================
+# Frontend & Node.js Artifacts
+# ==========================================
+node_modules/
+*/node_modules/*
+dist/
+dist-ssr/
+*.local
+.pnpm-debug.log*
+.yarn-debug.log*
+.yarn-error.log*
+.env*.local
+
+# ==========================================
 # Logs & Temporary Files & Local SQLite Databases
 # ==========================================
 *.log

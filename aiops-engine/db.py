@@ -267,3 +267,140 @@ def save_agent_traces_to_db(
     except Exception as e:
         print(f"[AIOps Database] Error saving agent traces: {e}")
 
+
+def get_incidents(limit: int = 50, service: str | None = None) -> list[dict[str, Any]]:
+    """Retrieves recent incidents from Supabase PostgreSQL with optional service filtering."""
+    engine = get_db_engine()
+    if not engine:
+        return []
+
+    try:
+        with engine.connect() as conn:
+            if service:
+                query = text(
+                    """
+                    SELECT id, service, severity, status, incident_summary, detected_exception, faulty_file, mttd_seconds, created_at
+                    FROM incidents
+                    WHERE service = :service
+                    ORDER BY created_at DESC
+                    LIMIT :limit;
+                    """
+                )
+                result = conn.execute(query, {"service": service, "limit": limit})
+            else:
+                query = text(
+                    """
+                    SELECT id, service, severity, status, incident_summary, detected_exception, faulty_file, mttd_seconds, created_at
+                    FROM incidents
+                    ORDER BY created_at DESC
+                    LIMIT :limit;
+                    """
+                )
+                result = conn.execute(query, {"limit": limit})
+
+            rows = []
+            for row in result.fetchall():
+                data = dict(row._mapping)
+                data["id"] = str(data["id"])
+                rows.append(data)
+            return rows
+    except Exception as e:
+        print(f"[AIOps Database] Error fetching incidents: {e}")
+        return []
+
+
+def get_incident_by_id(incident_id: str) -> dict[str, Any] | None:
+    """Retrieves full incident details including 5-section Markdown RCA and agent traces."""
+    engine = get_db_engine()
+    if not engine:
+        return None
+
+    try:
+        with engine.connect() as conn:
+            # 1. Fetch incident record
+            inc_query = text(
+                """
+                SELECT id, trigger_log_id, service, severity, status, incident_summary,
+                       detected_exception, faulty_file, rca_report_markdown,
+                       immediate_fixes, long_term_prevention, mttd_seconds, mttr_seconds, created_at, resolved_at
+                FROM incidents
+                WHERE id = CAST(:id AS UUID)
+                LIMIT 1;
+                """
+            )
+            inc_res = conn.execute(inc_query, {"id": incident_id}).fetchone()
+            if not inc_res:
+                return None
+
+            incident = dict(inc_res._mapping)
+            incident["id"] = str(incident["id"])
+            if incident.get("trigger_log_id"):
+                incident["trigger_log_id"] = str(incident["trigger_log_id"])
+
+            # 2. Fetch agent traces
+            trace_query = text(
+                """
+                SELECT id, node_name, latency_ms, input_tokens, output_tokens, total_tokens, model_name, mcp_tools_invoked, created_at
+                FROM agent_traces
+                WHERE incident_id = CAST(:id AS UUID)
+                ORDER BY created_at ASC;
+                """
+            )
+            trace_res = conn.execute(trace_query, {"id": incident_id}).fetchall()
+            incident["traces"] = [dict(t._mapping) for t in trace_res]
+            for t in incident["traces"]:
+                t["id"] = str(t["id"])
+
+            return incident
+    except Exception as e:
+        print(f"[AIOps Database] Error fetching incident {incident_id}: {e}")
+        return None
+
+
+def update_incident_status(
+    incident_id: str,
+    status: str | None = None,
+    immediate_fixes: list[dict[str, Any]] | None = None,
+    long_term_prevention: list[dict[str, Any]] | None = None,
+) -> bool:
+    """Updates incident status or remediation checklists in Supabase."""
+    engine = get_db_engine()
+    if not engine:
+        return False
+
+    try:
+        with engine.begin() as conn:
+            updates = []
+            params: dict[str, Any] = {"id": incident_id}
+
+            if status:
+                updates.append("status = :status")
+                params["status"] = status
+                if status.lower() == "resolved":
+                    updates.append("resolved_at = NOW()")
+
+            if immediate_fixes is not None:
+                updates.append("immediate_fixes = CAST(:immediate_fixes AS JSONB)")
+                params["immediate_fixes"] = json.dumps(immediate_fixes)
+
+            if long_term_prevention is not None:
+                updates.append("long_term_prevention = CAST(:long_term_prevention AS JSONB)")
+                params["long_term_prevention"] = json.dumps(long_term_prevention)
+
+            if not updates:
+                return True
+
+            query = text(
+                f"""
+                UPDATE incidents
+                SET {', '.join(updates)}
+                WHERE id = CAST(:id AS UUID);
+                """
+            )
+            conn.execute(query, params)
+            return True
+    except Exception as e:
+        print(f"[AIOps Database] Error updating incident {incident_id}: {e}")
+        return False
+
+
