@@ -62,12 +62,27 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     print("[AIOps Engine] Shutting down...")
 
 
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from slowapi.util import get_remote_address
+from starlette.requests import Request
+
+from utils.security import sanitize_text
+
+# Initialize Layer 1 Ingress Rate Limiter (50 requests/min per IP)
+limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
+
 app = FastAPI(
     title="AIOps Incident Response Engine",
     description="Real-time log ingestion, ML anomaly detection, and LangGraph multi-agent RCA synthesis.",
     version="1.0.0",
     lifespan=lifespan,
 )
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
+
 
 
 class LogPayload(BaseModel):
@@ -98,6 +113,7 @@ def health_check() -> dict[str, str]:
         "service": "aiops-engine",
         "model_loaded": str(ml_model is not None),
         "database_connected": str(get_db_engine() is not None),
+        "rate_limiting_active": "True",
         "buffer_size": str(len(log_buffer)),
     }
 
@@ -114,51 +130,56 @@ def get_buffer(limit: int = 50) -> dict[str, Any]:
 
 
 @app.post("/ingest-logs", response_model=LogIngestResponse)
+@limiter.limit("50/minute")
 async def ingest_logs(
-    payload: LogPayload, background_tasks: BackgroundTasks
+    request: Request, payload: LogPayload, background_tasks: BackgroundTasks
 ) -> LogIngestResponse:
-    """Receives forwarded logs, runs ML classification, and triggers agents upon anomaly detection."""
-    # 1. Append incoming log to in-memory ring buffer
+    """Receives forwarded logs with rate limiting, sanitizes PII/secrets, and triggers RCA upon anomaly."""
+    # Layer 2: Input PII & Secret Redaction BEFORE ML or LangGraph
+    sanitized_message = sanitize_text(payload.message)
+
+    # 1. Append sanitized log to in-memory ring buffer
     log_entry = {
-        "message": payload.message,
+        "message": sanitized_message,
         "timestamp": payload.timestamp,
         "service": payload.service,
     }
     log_buffer.append(log_entry)
 
-    # 2. Run ML inference
+    # 2. Run ML inference on sanitized log text
     prediction_label = "Normal"
     confidence_val: float | None = None
     is_anomaly = False
 
     if ml_model is not None:
         try:
-            preds = ml_model.predict([payload.message])
+            preds = ml_model.predict([sanitized_message])
             is_anomaly = bool(preds[0] == 1)
             prediction_label = "Anomaly" if is_anomaly else "Normal"
 
             if hasattr(ml_model, "predict_proba"):
-                probs = ml_model.predict_proba([payload.message])[0]
+                probs = ml_model.predict_proba([sanitized_message])[0]
                 confidence_val = float(probs[1] if is_anomaly else probs[0])
         except Exception as e:
             print(f"[AIOps Engine] ML inference error: {e}")
-            if "Error" in payload.message or "Traceback" in payload.message:
+            if "Error" in sanitized_message or "Traceback" in sanitized_message:
                 is_anomaly = True
                 prediction_label = "Anomaly"
     else:
         # Fallback if model is not loaded yet
-        if "Error" in payload.message or "Traceback" in payload.message:
+        if "Error" in sanitized_message or "Traceback" in sanitized_message:
             is_anomaly = True
             prediction_label = "Anomaly"
 
-    # 3. Persist log to Supabase
+    # 3. Persist sanitized log to Supabase
     log_id = save_log_to_db(
-        message=payload.message,
+        message=sanitized_message,
         timestamp=payload.timestamp,
         service=payload.service,
         is_anomaly=is_anomaly,
         confidence_score=confidence_val,
     )
+
 
     # 4. Trigger LangGraph investigation workflow if anomaly detected
     rca_report_text: str | None = None
@@ -169,12 +190,14 @@ async def ingest_logs(
         print("[AIOps Engine] [ALERT] Anomaly detected! Triggering LangGraph Multi-Agent Workflow...")
         try:
             initial_state = {
-                "log_message": payload.message,
+                "log_message": sanitized_message,
                 "related_logs": "",
                 "code_context": "",
                 "rca_report": "",
                 "metrics": {},
             }
+
+
             final_state = investigation_graph.invoke(initial_state)
             rca_report_text = final_state.get("rca_report")
             workflow_metrics = final_state.get("metrics")

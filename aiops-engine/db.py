@@ -113,10 +113,12 @@ def save_log_to_db(
     query = text(
         """
         INSERT INTO logs (timestamp, service, message, is_anomaly, confidence_score)
-        VALUES (COALESCE(:timestamp::timestamptz, NOW()), :service, :message, :is_anomaly, :confidence)
+        VALUES (COALESCE(CAST(:timestamp AS TIMESTAMPTZ), NOW()), :service, :message, :is_anomaly, :confidence)
         RETURNING id;
         """
     )
+
+
     try:
         with engine.begin() as conn:
             result = conn.execute(
@@ -174,8 +176,8 @@ def save_incident_to_db(
             :detected_exception,
             :faulty_file,
             :rca_report_markdown,
-            :immediate_fixes::jsonb,
-            :long_term_prevention::jsonb,
+            CAST(:immediate_fixes AS JSONB),
+            CAST(:long_term_prevention AS JSONB),
             :mttd_seconds
         )
         RETURNING id;
@@ -235,7 +237,7 @@ def save_agent_traces_to_db(
             :output_tokens,
             :total_tokens,
             :model_name,
-            :mcp_tools_invoked::jsonb
+            CAST(:mcp_tools_invoked AS JSONB)
         );
         """
     )

@@ -54,19 +54,45 @@ def get_file_structure() -> str:
     return "\n".join(file_list) if file_list else "Target app directory is empty."
 
 
+# Blacklisted file names and extensions to prevent credential exposure
+SENSITIVE_PATTERNS = {
+    ".env",
+    "credentials.json",
+    "secrets.json",
+    "secrets.yaml",
+    "id_rsa",
+    "id_ed25519",
+}
+SENSITIVE_EXTENSIONS = {".key", ".pem", ".cert", ".crt", ".pfx", ".p12"}
+
+
 @mcp.tool()
 def read_file(file_path: str) -> str:
-    """Reads and returns the contents of a specific file inside target-app.
+    """Reads and returns the contents of a specific file inside target-app with strict security boundaries.
     
     Args:
         file_path: Relative path to the file inside target-app (e.g. 'main.py' or 'requirements.txt')
     """
-    # Prevent directory traversal
+    base_dir = TARGET_APP_DIR.resolve()
+    
+    # 1. Normalize and resolve path
     clean_path = Path(file_path).as_posix().lstrip("/\\")
     target_file = (TARGET_APP_DIR / clean_path).resolve()
 
-    if not str(target_file).startswith(str(TARGET_APP_DIR.resolve())):
-        return f"Access Denied: Path '{file_path}' is outside the target-app directory."
+    # 2. Strict Path Traversal Guard (must be strictly inside base_dir)
+    try:
+        target_file.relative_to(base_dir)
+    except ValueError:
+        return f"Security Error: Path '{file_path}' traverses outside the allowed /target-app directory."
+
+    # 3. Sensitive File Name & Extension Blacklist Guard
+    file_name = target_file.name.lower()
+    if (
+        file_name in SENSITIVE_PATTERNS
+        or file_name.startswith(".env")
+        or target_file.suffix.lower() in SENSITIVE_EXTENSIONS
+    ):
+        return f"Security Error: Access to sensitive/credential file '{file_path}' is strictly blocked by MCP guardrails."
 
     if not target_file.exists() or not target_file.is_file():
         return f"Error: File '{file_path}' not found in target-app."
@@ -75,6 +101,7 @@ def read_file(file_path: str) -> str:
         return target_file.read_text(encoding="utf-8")
     except Exception as e:
         return f"Error reading file '{file_path}': {e}"
+
 
 
 @mcp.tool()
@@ -90,5 +117,69 @@ def get_recent_git_changes() -> str:
     )
 
 
+@mcp.tool()
+def query_database_state(sql_query: str) -> str:
+    """Executes a strictly validated, read-only SELECT query against the database (Layer 2 & Layer 3 Guardrails).
+    
+    Args:
+        sql_query: The SQL SELECT statement to inspect database state (e.g. 'SELECT count(*) FROM incidents')
+    """
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from utils.security import validate_readonly_sql
+    from db import get_db_engine
+    from sqlalchemy import text
+
+    # Layer 2 Guardrail: Strict AST & Keyword Validation
+    is_safe, message = validate_readonly_sql(sql_query)
+    if not is_safe:
+        return f"Security Error: {message}"
+
+    engine = get_db_engine()
+    if not engine:
+        return "Database is not connected or DATABASE_URL is not set."
+
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(text(sql_query))
+            rows = [dict(row._mapping) for row in result.fetchmany(50)]
+            import json
+            return json.dumps(rows, default=str, indent=2)
+    except Exception as e:
+        return f"Database Query Error: {e}"
+
+
+@mcp.tool()
+def get_historical_incidents(service: str = "target-app", limit: int = 5) -> str:
+    """High-level abstraction tool to safely retrieve past incidents (Layer 3 Tool Abstraction)."""
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from db import get_db_engine
+    from sqlalchemy import text
+
+    engine = get_db_engine()
+    if not engine:
+        return "Database is not connected."
+
+    query = text(
+        """
+        SELECT id, severity, status, incident_summary, detected_exception, created_at
+        FROM incidents
+        WHERE service = :service
+        ORDER BY created_at DESC
+        LIMIT :limit;
+        """
+    )
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(query, {"service": service, "limit": limit})
+            rows = [dict(row._mapping) for row in result.fetchall()]
+            import json
+            return json.dumps(rows, default=str, indent=2)
+    except Exception as e:
+        return f"Database Error: {e}"
+
+
 if __name__ == "__main__":
     mcp.run()
+

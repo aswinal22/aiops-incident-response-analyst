@@ -8,7 +8,15 @@ from pathlib import Path
 engine_dir = Path(__file__).resolve().parent
 sys.path.insert(0, str(engine_dir))
 
+# Ensure safe UTF-8 stdout printing on Windows
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 from fastapi.testclient import TestClient
+
 from main import app, log_buffer
 
 
