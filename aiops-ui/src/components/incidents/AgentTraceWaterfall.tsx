@@ -113,3 +113,4 @@ export const AgentTraceWaterfall: React.FC<AgentTraceWaterfallProps> = ({ traces
     </div>
   );
 };
+

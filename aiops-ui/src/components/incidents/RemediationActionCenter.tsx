@@ -180,3 +180,4 @@ export const RemediationActionCenter: React.FC<RemediationActionCenterProps> = (
     </div>
   );
 };
+

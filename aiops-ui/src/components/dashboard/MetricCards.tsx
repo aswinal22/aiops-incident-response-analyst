@@ -73,3 +73,4 @@ export const MetricCards: React.FC<MetricCardsProps> = ({ incidents }) => {
     </div>
   );
 };
+

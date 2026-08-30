@@ -204,3 +204,4 @@ export const LiveLogViewer: React.FC<LiveLogViewerProps> = () => {
     </div>
   );
 };
+

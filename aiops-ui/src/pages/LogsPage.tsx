@@ -24,3 +24,4 @@ export const LogsPage: React.FC = () => {
     </div>
   );
 };
+

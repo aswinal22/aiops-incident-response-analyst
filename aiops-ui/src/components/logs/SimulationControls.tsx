@@ -116,3 +116,4 @@ export const SimulationControls: React.FC<SimulationControlsProps> = ({ onSucces
     </div>
   );
 };
+

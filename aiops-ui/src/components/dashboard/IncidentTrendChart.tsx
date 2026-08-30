@@ -68,3 +68,4 @@ export const IncidentTrendChart: React.FC<IncidentTrendChartProps> = ({ incident
     </div>
   );
 };
+

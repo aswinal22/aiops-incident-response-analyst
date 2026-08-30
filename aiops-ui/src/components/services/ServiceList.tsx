@@ -109,3 +109,4 @@ export const ServiceList: React.FC<ServiceListProps> = ({ services, onOpenRegist
     </div>
   );
 };
+

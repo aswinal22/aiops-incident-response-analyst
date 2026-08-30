@@ -87,3 +87,4 @@ export const Navbar: React.FC<NavbarProps> = ({ onSimulateClick }) => {
     </header>
   );
 };
+
