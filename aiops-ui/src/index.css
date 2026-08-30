@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-[#090d16] text-slate-200 font-sans min-h-screen;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+}
+
+/* Custom Scrollbar for Terminals & Lists */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #090d16;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+
+/* Pulse Glow & Terminal Glow */
+.glow-blue {
+  box-shadow: 0 0 20px -5px rgba(59, 130, 246, 0.3);
+}
+
+.glow-rose {
+  box-shadow: 0 0 20px -5px rgba(244, 63, 94, 0.3);
+}
+
+.glow-emerald {
+  box-shadow: 0 0 20px -5px rgba(16, 185, 129, 0.3);
+}
+
+/* Code Highlighting in Markdown */
+pre {
+  @apply font-mono text-xs leading-relaxed bg-[#0b101b] border border-slate-800/80 rounded-lg p-4 overflow-x-auto my-3 text-slate-200;
+}
+
+code {
+  @apply font-mono text-[13px] bg-slate-800/60 px-1.5 py-0.5 rounded text-blue-300;
+}
+
+pre code {
+  @apply bg-transparent p-0 text-slate-200;
+}
