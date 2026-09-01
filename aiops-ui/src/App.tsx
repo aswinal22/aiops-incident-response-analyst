@@ -6,11 +6,12 @@ import { Navbar } from './components/layout/Navbar';
 import { Sidebar } from './components/layout/Sidebar';
 import { LoginPage } from './pages/LoginPage';
 import { StreamConsolePage } from './pages/StreamConsolePage';
+import { ProjectsPage } from './pages/ProjectsPage';
 import { IncidentsPage } from './pages/IncidentsPage';
 import { IncidentDetailPage } from './pages/IncidentDetailPage';
-import { ConnectedReposPage } from './pages/ConnectedReposPage';
 import { SecurityPage } from './pages/SecurityPage';
 import { BenchmarksPage } from './pages/BenchmarksPage';
+import { SettingsPage } from './pages/SettingsPage';
 
 export function App() {
   return (
@@ -32,11 +33,12 @@ export function App() {
                     <main className="flex-1 p-6 max-w-7xl mx-auto w-full overflow-y-auto min-h-[calc(100vh-3.5rem)]">
                       <Routes>
                         <Route path="/" element={<StreamConsolePage />} />
+                        <Route path="/projects" element={<ProjectsPage />} />
                         <Route path="/incidents" element={<IncidentsPage />} />
                         <Route path="/incidents/:id" element={<IncidentDetailPage />} />
-                        <Route path="/repos" element={<ConnectedReposPage />} />
                         <Route path="/security" element={<SecurityPage />} />
                         <Route path="/benchmarks" element={<BenchmarksPage />} />
+                        <Route path="/settings" element={<SettingsPage />} />
                         <Route path="*" element={<Navigate to="/" replace />} />
                       </Routes>
                     </main>

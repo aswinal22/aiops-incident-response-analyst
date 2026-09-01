@@ -1,13 +1,14 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Terminal, AlertOctagon, GitBranch, Shield, Activity, Settings, ExternalLink } from 'lucide-react';
+import { Terminal, Folder, AlertOctagon, Shield, Activity, Settings, ExternalLink } from 'lucide-react';
 
 const navItems = [
   { to: '/', label: 'Live Stream Console', icon: Terminal },
+  { to: '/projects', label: 'Projects & Repos', icon: Folder },
   { to: '/incidents', label: 'Incident RCA Studio', icon: AlertOctagon },
-  { to: '/repos', label: 'Connected Repos', icon: GitBranch },
   { to: '/security', label: '5-Layer Security', icon: Shield },
   { to: '/benchmarks', label: 'Evals & Benchmarks', icon: Activity },
+  { to: '/settings', label: 'Settings & PAT', icon: Settings },
 ];
 
 export const Sidebar: React.FC = () => {
@@ -15,7 +16,7 @@ export const Sidebar: React.FC = () => {
     <aside className="w-56 border-r border-border bg-[#070b14]/90 flex flex-col justify-between p-3 shrink-0 h-[calc(100vh-3.5rem)] sticky top-14">
       <div className="space-y-1">
         <div className="px-3 py-1.5 text-[10px] font-mono uppercase tracking-wider text-slate-400 font-semibold">
-          Platform Workspace
+          AIOps Platform
         </div>
         {navItems.map(({ to, label, icon: Icon }) => (
           <NavLink
@@ -40,11 +41,11 @@ export const Sidebar: React.FC = () => {
       <div className="pt-3 border-t border-border space-y-2">
         <div className="p-2.5 rounded-xl bg-surface-elevated border border-border/60 text-[11px] font-mono space-y-1">
           <div className="text-slate-400 flex items-center justify-between">
-            <span>Model:</span>
-            <span className="text-emerald-400 font-semibold">Scikit-Learn ML</span>
+            <span>24/7 Engine:</span>
+            <span className="text-emerald-400 font-semibold">FastAPI + Render</span>
           </div>
           <div className="text-slate-400 flex items-center justify-between">
-            <span>Agents:</span>
+            <span>RCA Agent:</span>
             <span className="text-purple-400 font-semibold">LangGraph Groq</span>
           </div>
         </div>

@@ -23,21 +23,31 @@ export interface GitHubRepo {
   updated_at: string;
 }
 
-export interface LogStream {
+export interface Service {
   id: string;
+  project_id: string;
   name: string;
-  repo_name?: string;
-  repo_owner?: string;
-  repo_url?: string;
-  log_drain_url: string;
-  source_type: 'github_repo' | 'custom_drain' | 'mock';
+  repo_url: string;
+  repo_owner: string;
+  repo_name: string;
+  workspace_path?: string;
   created_at: string;
+  log_drain_url?: string;
 }
 
-export interface UserSession {
-  user: GitHubUser;
-  githubPat: string;
-  activeStream: LogStream | null;
+export interface Project {
+  id: string;
+  name: string;
+  description?: string;
+  created_at: string;
+  services?: Service[];
+}
+
+export interface UserAccount {
+  username: string;
+  name: string;
+  role: string;
+  email?: string;
 }
 
 export interface Incident {
@@ -80,24 +90,6 @@ export interface LogEntry {
   service_id?: string;
   is_anomaly?: boolean;
   confidence_score?: number;
-}
-
-export interface Service {
-  id: string;
-  project_id: string;
-  name: string;
-  repo_url: string;
-  repo_owner: string;
-  repo_name: string;
-  workspace_path: string;
-  created_at: string;
-}
-
-export interface Project {
-  id: string;
-  name: string;
-  description: string;
-  created_at: string;
 }
 
 export interface HealthStatus {

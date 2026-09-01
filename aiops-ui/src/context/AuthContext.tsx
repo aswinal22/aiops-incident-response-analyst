@@ -1,27 +1,31 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { GitHubRepo, GitHubUser, LogStream } from '../lib/types';
-import { fetchUserRepositories, validateGitHubPat } from '../lib/github';
+import { api } from '../lib/api';
+import { Project, Service, UserAccount } from '../lib/types';
+import { validateGitHubPat } from '../lib/github';
 
 interface AuthContextType {
-  user: GitHubUser | null;
+  user: UserAccount | null;
   githubPat: string | null;
-  activeStream: LogStream | null;
-  isAuthenticated: boolean;
+  patStatus: 'connected' | 'missing' | 'invalid';
+  projects: Project[];
+  activeProject: Project | null;
+  activeService: Service | null;
   isLoading: boolean;
-  userRepos: GitHubRepo[];
-  loginWithPat: (pat: string) => Promise<GitHubUser>;
-  loginWithCredentials: (username: string, password: string, pat: string) => Promise<GitHubUser>;
+  login: (username: string, password?: string) => Promise<void>;
   logout: () => void;
-  setActiveStream: (stream: LogStream | null) => void;
-  refreshRepos: () => Promise<void>;
+  saveGitHubPat: (pat: string) => Promise<void>;
+  setActiveProject: (project: Project | null) => void;
+  setActiveService: (service: Service | null) => void;
+  refreshProjectsAndServices: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const STORAGE_KEYS = {
-  USER: 'aiops_user',
+  USER: 'aiops_user_session',
   PAT: 'aiops_github_pat',
-  ACTIVE_STREAM: 'aiops_active_stream',
+  ACTIVE_PROJECT: 'aiops_active_project',
+  ACTIVE_SERVICE: 'aiops_active_service',
 };
 
 function getSafeItem<T>(key: string): T | null {
@@ -34,7 +38,7 @@ function getSafeItem<T>(key: string): T | null {
 }
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<GitHubUser | null>(() => getSafeItem<GitHubUser>(STORAGE_KEYS.USER));
+  const [user, setUser] = useState<UserAccount | null>(() => getSafeItem<UserAccount>(STORAGE_KEYS.USER));
   const [githubPat, setGithubPat] = useState<string | null>(() => {
     try {
       return localStorage.getItem(STORAGE_KEYS.PAT);
@@ -42,106 +46,145 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return null;
     }
   });
-  const [activeStream, setActiveStreamState] = useState<LogStream | null>(() => getSafeItem<LogStream>(STORAGE_KEYS.ACTIVE_STREAM));
-  const [userRepos, setUserRepos] = useState<GitHubRepo[]>([]);
+  const [patStatus, setPatStatus] = useState<'connected' | 'missing' | 'invalid'>('missing');
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [activeProject, setActiveProjectState] = useState<Project | null>(() => getSafeItem<Project>(STORAGE_KEYS.ACTIVE_PROJECT));
+  const [activeService, setActiveServiceState] = useState<Service | null>(() => getSafeItem<Service>(STORAGE_KEYS.ACTIVE_SERVICE));
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load repositories when PAT is available
+  // Validate PAT status on change
   useEffect(() => {
     if (githubPat) {
-      loadRepos(githubPat);
+      validateGitHubPat(githubPat)
+        .then(() => setPatStatus('connected'))
+        .catch(() => setPatStatus('invalid'));
     } else {
-      setUserRepos([]);
-      setIsLoading(false);
+      setPatStatus('missing');
     }
   }, [githubPat]);
 
-  const loadRepos = async (pat: string) => {
+  // Load Projects and Services from Backend API
+  const refreshProjectsAndServices = async () => {
     try {
-      const repos = await fetchUserRepositories(pat);
-      setUserRepos(repos);
+      const [projList, svcList] = await Promise.all([
+        api.getProjects().catch(() => []),
+        api.getServices().catch(() => []),
+      ]);
 
-      // Auto-set default stream if none selected
-      if (!activeStream && repos.length > 0) {
-        const firstRepo = repos[0];
-        const defaultStream: LogStream = {
-          id: firstRepo.name,
-          name: firstRepo.name,
-          repo_name: firstRepo.name,
-          repo_owner: firstRepo.owner.login,
-          repo_url: firstRepo.html_url,
-          log_drain_url: `/ingest-logs/${firstRepo.name}`,
-          source_type: 'github_repo',
+      // Combine services into their projects
+      const combinedProjects: Project[] = (projList || []).map((proj) => ({
+        ...proj,
+        services: (svcList || []).filter((s) => s.project_id === proj.id),
+      }));
+
+      // If no projects exist in database yet, create a default "Core Services" project
+      if (combinedProjects.length === 0) {
+        const defaultProj: Project = {
+          id: 'default-project',
+          name: 'Core Production Services',
+          description: 'Default project workspace for microservice observability',
           created_at: new Date().toISOString(),
+          services: (svcList || []).map((s) => ({
+            ...s,
+            log_drain_url: `/ingest-logs/${s.id || s.name}`,
+          })),
         };
-        setActiveStream(defaultStream);
+        combinedProjects.push(defaultProj);
+      }
+
+      setProjects(combinedProjects);
+
+      // Set active project if none selected
+      if (!activeProject && combinedProjects.length > 0) {
+        const first = combinedProjects[0];
+        setActiveProject(first);
+        if (first.services && first.services.length > 0) {
+          setActiveService(first.services[0]);
+        }
       }
     } catch (err) {
-      console.warn('Could not load user repos on mount:', err);
+      console.error('Error fetching projects & services:', err);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const loginWithPat = async (pat: string): Promise<GitHubUser> => {
-    setIsLoading(true);
+  useEffect(() => {
+    if (user) {
+      refreshProjectsAndServices();
+    } else {
+      setIsLoading(false);
+    }
+  }, [user]);
+
+  const login = async (username: string, _password?: string) => {
+    const userAcc: UserAccount = {
+      username: username.trim(),
+      name: username.split('@')[0],
+      role: 'Site Reliability Engineer',
+      email: username.includes('@') ? username : undefined,
+    };
+    setUser(userAcc);
     try {
-      const ghUser = await validateGitHubPat(pat);
-      setUser(ghUser);
-      setGithubPat(pat);
-      try {
-        localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(ghUser));
-        localStorage.setItem(STORAGE_KEYS.PAT, pat);
-      } catch (storageErr) {
-        console.warn('LocalStorage save failed:', storageErr);
-      }
-      await loadRepos(pat);
-      return ghUser;
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const loginWithCredentials = async (
-    username: string,
-    _password: string,
-    pat: string
-  ): Promise<GitHubUser> => {
-    const ghUser = await loginWithPat(pat);
-    return ghUser;
+      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userAcc));
+    } catch {}
+    await refreshProjectsAndServices();
   };
 
   const logout = () => {
     setUser(null);
-    setGithubPat(null);
-    setActiveStreamState(null);
-    setUserRepos([]);
+    setActiveProjectState(null);
+    setActiveServiceState(null);
     try {
       localStorage.removeItem(STORAGE_KEYS.USER);
-      localStorage.removeItem(STORAGE_KEYS.PAT);
-      localStorage.removeItem(STORAGE_KEYS.ACTIVE_STREAM);
-    } catch (storageErr) {
-      console.warn('LocalStorage clear failed:', storageErr);
+      localStorage.removeItem(STORAGE_KEYS.ACTIVE_PROJECT);
+      localStorage.removeItem(STORAGE_KEYS.ACTIVE_SERVICE);
+    } catch {}
+  };
+
+  const saveGitHubPat = async (pat: string) => {
+    const clean = pat.trim();
+    if (clean) {
+      await validateGitHubPat(clean);
+      setGithubPat(clean);
+      setPatStatus('connected');
+      try {
+        localStorage.setItem(STORAGE_KEYS.PAT, clean);
+      } catch {}
+    } else {
+      setGithubPat(null);
+      setPatStatus('missing');
+      try {
+        localStorage.removeItem(STORAGE_KEYS.PAT);
+      } catch {}
     }
   };
 
-  const setActiveStream = (stream: LogStream | null) => {
-    setActiveStreamState(stream);
+  const setActiveProject = (proj: Project | null) => {
+    setActiveProjectState(proj);
     try {
-      if (stream) {
-        localStorage.setItem(STORAGE_KEYS.ACTIVE_STREAM, JSON.stringify(stream));
+      if (proj) {
+        localStorage.setItem(STORAGE_KEYS.ACTIVE_PROJECT, JSON.stringify(proj));
+        // Auto-select first service in project if available
+        if (proj.services && proj.services.length > 0) {
+          setActiveService(proj.services[0]);
+        }
       } else {
-        localStorage.removeItem(STORAGE_KEYS.ACTIVE_STREAM);
+        localStorage.removeItem(STORAGE_KEYS.ACTIVE_PROJECT);
+        setActiveService(null);
       }
-    } catch (storageErr) {
-      console.warn('LocalStorage active stream save failed:', storageErr);
-    }
+    } catch {}
   };
 
-  const refreshRepos = async () => {
-    if (githubPat) {
-      await loadRepos(githubPat);
-    }
+  const setActiveService = (svc: Service | null) => {
+    setActiveServiceState(svc);
+    try {
+      if (svc) {
+        localStorage.setItem(STORAGE_KEYS.ACTIVE_SERVICE, JSON.stringify(svc));
+      } else {
+        localStorage.removeItem(STORAGE_KEYS.ACTIVE_SERVICE);
+      }
+    } catch {}
   };
 
   return (
@@ -149,15 +192,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         user,
         githubPat,
-        activeStream,
-        isAuthenticated: !!user && !!githubPat,
+        patStatus,
+        projects,
+        activeProject,
+        activeService,
         isLoading,
-        userRepos,
-        loginWithPat,
-        loginWithCredentials,
+        login,
         logout,
-        setActiveStream,
-        refreshRepos,
+        saveGitHubPat,
+        setActiveProject,
+        setActiveService,
+        refreshProjectsAndServices,
       }}
     >
       {children}

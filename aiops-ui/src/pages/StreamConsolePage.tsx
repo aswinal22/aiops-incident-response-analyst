@@ -3,7 +3,6 @@ import { useAuth } from '../context/AuthContext';
 import { api } from '../lib/api';
 import { Incident } from '../lib/types';
 import { ActiveStreamHeader } from '../components/stream/ActiveStreamHeader';
-import { StreamSelectorModal } from '../components/stream/StreamSelectorModal';
 import { LiveLogViewer } from '../components/logs/LiveLogViewer';
 import { SimulationControls } from '../components/logs/SimulationControls';
 import { MetricCards } from '../components/dashboard/MetricCards';
@@ -11,15 +10,16 @@ import { IncidentTable } from '../components/incidents/IncidentTable';
 import { Terminal, ShieldCheck, Cpu, AlertOctagon, RefreshCw } from 'lucide-react';
 
 export const StreamConsolePage: React.FC = () => {
-  const { activeStream } = useAuth();
-  const [isSelectorOpen, setIsSelectorOpen] = useState(false);
+  const { activeProject, activeService } = useAuth();
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loadingIncidents, setLoadingIncidents] = useState(false);
+
+  const activeServiceName = activeService?.name;
 
   const fetchIncidents = async () => {
     setLoadingIncidents(true);
     try {
-      const data = await api.getIncidents(activeStream?.name);
+      const data = await api.getIncidents(activeServiceName);
       setIncidents(data || []);
     } catch (err) {
       console.error('Error fetching stream incidents:', err);
@@ -32,12 +32,12 @@ export const StreamConsolePage: React.FC = () => {
     fetchIncidents();
     const interval = setInterval(fetchIncidents, 10000);
     return () => clearInterval(interval);
-  }, [activeStream?.name]);
+  }, [activeServiceName]);
 
   return (
     <div className="space-y-6">
-      {/* Active Stream Header & Switcher */}
-      <ActiveStreamHeader onOpenSelector={() => setIsSelectorOpen(true)} />
+      {/* Active Project & Service Stream Header */}
+      <ActiveStreamHeader />
 
       {/* Top Metrics Row */}
       <MetricCards incidents={incidents} />
@@ -75,7 +75,7 @@ export const StreamConsolePage: React.FC = () => {
           <div className="flex items-center gap-2">
             <AlertOctagon className="w-4 h-4 text-rose-400" />
             <h3 className="text-sm font-bold text-slate-200 font-mono">
-              Stream Outage History & RCA Reports ({incidents.length})
+              24/7 Outage History & RCA Reports ({incidents.length})
             </h3>
           </div>
 
@@ -90,8 +90,6 @@ export const StreamConsolePage: React.FC = () => {
 
         <IncidentTable incidents={incidents} />
       </div>
-
-      <StreamSelectorModal isOpen={isSelectorOpen} onClose={() => setIsSelectorOpen(false)} />
     </div>
   );
 };
