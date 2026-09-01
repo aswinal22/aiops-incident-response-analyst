@@ -8,11 +8,11 @@ interface SimulationControlsProps {
 }
 
 export const SimulationControls: React.FC<SimulationControlsProps> = ({ onSuccess }) => {
-  const { activeStream } = useAuth();
+  const { activeService } = useAuth();
   const [loadingType, setLoadingType] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ status: 'success' | 'error'; message: string } | null>(null);
 
-  const activeServiceName = activeStream?.name || 'target-app';
+  const activeServiceName = activeService?.name || 'target-app';
 
   const triggerSimulatedError = async (type: string, name: string) => {
     setLoadingType(type);
