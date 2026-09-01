@@ -1,3 +1,45 @@
+export interface GitHubUser {
+  login: string;
+  id: number;
+  avatar_url: string;
+  html_url: string;
+  name: string;
+  email?: string;
+  public_repos?: number;
+}
+
+export interface GitHubRepo {
+  id: number;
+  name: string;
+  full_name: string;
+  owner: {
+    login: string;
+    avatar_url: string;
+  };
+  html_url: string;
+  description: string | null;
+  default_branch: string;
+  language: string | null;
+  updated_at: string;
+}
+
+export interface LogStream {
+  id: string;
+  name: string;
+  repo_name?: string;
+  repo_owner?: string;
+  repo_url?: string;
+  log_drain_url: string;
+  source_type: 'github_repo' | 'custom_drain' | 'mock';
+  created_at: string;
+}
+
+export interface UserSession {
+  user: GitHubUser;
+  githubPat: string;
+  activeStream: LogStream | null;
+}
+
 export interface Incident {
   id: string;
   trigger_log_id?: string;
@@ -66,4 +108,3 @@ export interface HealthStatus {
   rate_limiting_active: string;
   buffer_size: string;
 }
-

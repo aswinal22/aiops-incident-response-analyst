@@ -1,90 +1,107 @@
 import React, { useEffect, useState } from 'react';
+import { useAuth } from '../../context/AuthContext';
 import { api } from '../../lib/api';
 import { HealthStatus } from '../../lib/types';
-import { ShieldCheck, Database, Cpu, Radio, Sparkles } from 'lucide-react';
+import { Zap, Github, Server, LogOut, ChevronDown, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { StreamSelectorModal } from '../stream/StreamSelectorModal';
 
-interface NavbarProps {
-  onSimulateClick?: () => void;
-}
-
-export const Navbar: React.FC<NavbarProps> = ({ onSimulateClick }) => {
+export const Navbar: React.FC = () => {
+  const { user, activeStream, logout } = useAuth();
   const [health, setHealth] = useState<HealthStatus | null>(null);
-  const [isOnline, setIsOnline] = useState(false);
+  const [isSelectorOpen, setIsSelectorOpen] = useState(false);
 
   useEffect(() => {
     const checkHealth = async () => {
       try {
-        const res = await api.getHealth();
-        setHealth(res);
-        setIsOnline(true);
+        const data = await api.getHealth();
+        setHealth(data);
       } catch {
-        setIsOnline(false);
+        setHealth(null);
       }
     };
-
     checkHealth();
-    const interval = setInterval(checkHealth, 5000);
+    const interval = setInterval(checkHealth, 15000);
     return () => clearInterval(interval);
   }, []);
 
   return (
-    <header className="h-16 bg-surface/80 backdrop-blur border-b border-border px-6 flex items-center justify-between sticky top-0 z-30">
-      {/* Left: Environment Status */}
-      <div className="flex items-center gap-4">
-        <div className="flex items-center gap-2">
-          <span className="relative flex h-2.5 w-2.5">
-            {isOnline ? (
+    <>
+      <header className="h-14 border-b border-border bg-surface/80 backdrop-blur-md px-4 flex items-center justify-between sticky top-0 z-30">
+        {/* Brand */}
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-accent-blue/10 border border-accent-blue/30 flex items-center justify-center text-accent-blue glow-blue">
+              <Zap className="w-4 h-4" />
+            </div>
+            <div>
+              <span className="font-bold text-xs tracking-wide text-slate-100 uppercase font-mono block">
+                AIOps SRE Platform
+              </span>
+              <span className="text-[10px] text-slate-400 font-mono -mt-0.5 block">
+                Autonomous Incident Response
+              </span>
+            </div>
+          </div>
+
+          {/* Active Stream Pill / Switcher */}
+          <div className="hidden sm:flex items-center">
+            <button
+              onClick={() => setIsSelectorOpen(true)}
+              className="flex items-center gap-2 px-3 py-1 rounded-lg bg-[#090d16] hover:bg-slate-800/80 border border-slate-800 text-xs font-mono text-slate-300 transition-all"
+            >
+              <Server className="w-3.5 h-3.5 text-accent-blue" />
+              <span className="text-slate-500">Stream:</span>
+              <span className="text-slate-200 font-semibold truncate max-w-[140px]">
+                {activeStream ? activeStream.name : 'Select Stream'}
+              </span>
+              <ChevronDown className="w-3 h-3 text-slate-500" />
+            </button>
+          </div>
+        </div>
+
+        {/* Status Indicators & User Profile */}
+        <div className="flex items-center gap-3">
+          {/* Engine Health Status */}
+          <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-mono border bg-slate-900/60 border-border">
+            {health?.status === 'ok' ? (
               <>
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span className="text-emerald-400 font-medium">AIOps Engine Active</span>
               </>
             ) : (
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
+              <>
+                <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+                <span className="text-amber-400 font-medium">Connecting...</span>
+              </>
             )}
-          </span>
-          <span className="text-xs font-semibold text-slate-200">
-            {isOnline ? 'AIOps Engine Active' : 'Connecting to Engine...'}
-          </span>
+          </div>
+
+          {/* GitHub User Profile */}
+          {user && (
+            <div className="flex items-center gap-2 pl-2 border-l border-border">
+              <img
+                src={user.avatar_url}
+                alt={user.name}
+                className="w-7 h-7 rounded-full border border-slate-700 object-cover"
+              />
+              <div className="hidden lg:block text-left">
+                <div className="text-xs font-semibold text-slate-200 leading-none">{user.name || user.login}</div>
+                <div className="text-[10px] text-slate-400 font-mono leading-none mt-0.5">@{user.login}</div>
+              </div>
+
+              <button
+                onClick={logout}
+                title="Logout"
+                className="p-1.5 rounded-lg hover:bg-rose-500/10 text-slate-400 hover:text-rose-400 transition-colors ml-1"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
         </div>
+      </header>
 
-        <div className="hidden md:flex items-center gap-2 border-l border-slate-800 pl-4 text-xs text-slate-400">
-          <div className="flex items-center gap-1.5 bg-slate-800/40 px-2.5 py-1 rounded border border-slate-700/50">
-            <Cpu className="w-3.5 h-3.5 text-amber-400" />
-            <span>ML: <strong className="text-slate-200 font-mono">TF-IDF Active</strong></span>
-          </div>
-
-          <div className="flex items-center gap-1.5 bg-slate-800/40 px-2.5 py-1 rounded border border-slate-700/50">
-            <Database className="w-3.5 h-3.5 text-cyan-400" />
-            <span>DB: <strong className="text-slate-200 font-mono">Supabase</strong></span>
-          </div>
-
-          <div className="flex items-center gap-1.5 bg-slate-800/40 px-2.5 py-1 rounded border border-slate-700/50">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Guardrails: <strong className="text-slate-200 font-mono">5-Layer L1-L5</strong></span>
-          </div>
-        </div>
-      </div>
-
-      {/* Right: Trigger Simulation & Buffer Counter */}
-      <div className="flex items-center gap-3">
-        {health && (
-          <div className="hidden sm:flex items-center gap-1.5 text-xs text-slate-400 font-mono bg-slate-900 px-2.5 py-1 rounded border border-slate-800">
-            <Radio className="w-3 h-3 text-accent-blue animate-pulse" />
-            <span>Buffer: <strong className="text-blue-400">{health.buffer_size}</strong> logs</span>
-          </div>
-        )}
-
-        {onSimulateClick && (
-          <button
-            onClick={onSimulateClick}
-            className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 transition-all glow-rose"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-rose-400" />
-            Simulate Outage
-          </button>
-        )}
-      </div>
-    </header>
+      <StreamSelectorModal isOpen={isSelectorOpen} onClose={() => setIsSelectorOpen(false)} />
+    </>
   );
 };
-

@@ -1,65 +1,54 @@
-import React, { useState } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { Sidebar } from './components/layout/Sidebar';
+import React from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext';
+import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { Navbar } from './components/layout/Navbar';
-import { DashboardPage } from './pages/DashboardPage';
+import { Sidebar } from './components/layout/Sidebar';
+import { LoginPage } from './pages/LoginPage';
+import { StreamConsolePage } from './pages/StreamConsolePage';
 import { IncidentsPage } from './pages/IncidentsPage';
 import { IncidentDetailPage } from './pages/IncidentDetailPage';
-import { LogsPage } from './pages/LogsPage';
-import { ServicesPage } from './pages/ServicesPage';
+import { ConnectedReposPage } from './pages/ConnectedReposPage';
 import { SecurityPage } from './pages/SecurityPage';
 import { BenchmarksPage } from './pages/BenchmarksPage';
-import { api } from './lib/api';
 
-export const App: React.FC = () => {
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-
-  const handleGlobalSimulate = async () => {
-    try {
-      await api.simulateError('file_not_found', 'target-app');
-      setToastMessage('Simulated outage triggered! LangGraph RCA in progress.');
-      setTimeout(() => setToastMessage(null), 4000);
-    } catch (err: any) {
-      setToastMessage(`Simulation error: ${err.message}`);
-      setTimeout(() => setToastMessage(null), 4000);
-    }
-  };
-
+export function App() {
   return (
-    <BrowserRouter>
-      <div className="flex min-h-screen bg-background text-slate-100 font-sans">
-        {/* Persistent Sidebar */}
-        <Sidebar />
+    <AuthProvider>
+      <BrowserRouter>
+        <Routes>
+          {/* Public Login Route */}
+          <Route path="/login" element={<LoginPage />} />
 
-        {/* Main Content Area */}
-        <div className="flex-1 flex flex-col min-w-0">
-          <Navbar onSimulateClick={handleGlobalSimulate} />
-
-          {/* Toast Notification Banner */}
-          {toastMessage && (
-            <div className="bg-rose-500/20 border-b border-rose-500/40 text-rose-200 px-6 py-2 text-xs font-mono flex items-center justify-between animate-in slide-in-from-top-2">
-              <span>⚡ {toastMessage}</span>
-              <button onClick={() => setToastMessage(null)} className="text-slate-400 hover:text-white">
-                ✕
-              </button>
-            </div>
-          )}
-
-          {/* Router Outlet */}
-          <main className="flex-1 p-6 overflow-y-auto max-w-7xl w-full mx-auto">
-            <Routes>
-              <Route path="/" element={<DashboardPage />} />
-              <Route path="/incidents" element={<IncidentsPage />} />
-              <Route path="/incidents/:id" element={<IncidentDetailPage />} />
-              <Route path="/logs" element={<LogsPage />} />
-              <Route path="/services" element={<ServicesPage />} />
-              <Route path="/security" element={<SecurityPage />} />
-              <Route path="/benchmarks" element={<BenchmarksPage />} />
-            </Routes>
-          </main>
-        </div>
-      </div>
-    </BrowserRouter>
+          {/* Protected Application Workspace */}
+          <Route
+            path="/*"
+            element={
+              <ProtectedRoute>
+                <div className="min-h-screen bg-background text-slate-100 flex flex-col font-sans selection:bg-accent-blue/30 selection:text-white">
+                  <Navbar />
+                  <div className="flex flex-1">
+                    <Sidebar />
+                    <main className="flex-1 p-6 max-w-7xl mx-auto w-full overflow-y-auto min-h-[calc(100vh-3.5rem)]">
+                      <Routes>
+                        <Route path="/" element={<StreamConsolePage />} />
+                        <Route path="/incidents" element={<IncidentsPage />} />
+                        <Route path="/incidents/:id" element={<IncidentDetailPage />} />
+                        <Route path="/repos" element={<ConnectedReposPage />} />
+                        <Route path="/security" element={<SecurityPage />} />
+                        <Route path="/benchmarks" element={<BenchmarksPage />} />
+                        <Route path="*" element={<Navigate to="/" replace />} />
+                      </Routes>
+                    </main>
+                  </div>
+                </div>
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
   );
-};
+}
 
+export default App;
