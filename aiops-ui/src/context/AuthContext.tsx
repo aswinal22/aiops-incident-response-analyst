@@ -50,7 +50,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProject, setActiveProjectState] = useState<Project | null>(() => getSafeItem<Project>(STORAGE_KEYS.ACTIVE_PROJECT));
   const [activeService, setActiveServiceState] = useState<Service | null>(() => getSafeItem<Service>(STORAGE_KEYS.ACTIVE_SERVICE));
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
 
   // Validate PAT status on change
   useEffect(() => {
@@ -65,6 +65,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Load Projects and Services from Backend API
   const refreshProjectsAndServices = async () => {
+    setIsLoading(true);
     try {
       const [projList, svcList] = await Promise.all([
         api.getProjects().catch(() => []),
@@ -112,8 +113,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     if (user) {
       refreshProjectsAndServices();
-    } else {
-      setIsLoading(false);
     }
   }, [user]);
 
