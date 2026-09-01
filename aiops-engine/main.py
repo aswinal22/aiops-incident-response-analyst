@@ -172,6 +172,19 @@ def api_list_services(project_id: str | None = None) -> list[dict[str, Any]]:
 # Health & Diagnostic Endpoints
 # =========================================================================
 
+@app.get("/")
+@app.head("/")
+def root_status() -> dict[str, str]:
+    """Root endpoint for cloud platform health probes and index status."""
+    return {
+        "service": "AIOps Multi-Agent Incident Response Engine",
+        "status": "active",
+        "docs": "/docs",
+        "health": "/health",
+        "version": "1.0.0",
+    }
+
+
 @app.get("/health")
 def health_check() -> dict[str, str]:
     """Health check endpoint."""
