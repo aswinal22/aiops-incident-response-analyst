@@ -17,7 +17,7 @@ from typing import Any
 
 import joblib
 from dotenv import load_dotenv
-from fastapi import BackgroundTasks, FastAPI
+from fastapi import BackgroundTasks, FastAPI, HTTPException
 from pydantic import BaseModel, Field
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -26,7 +26,14 @@ from slowapi.util import get_remote_address
 from starlette.requests import Request
 
 from agents.graph import create_investigation_graph
-from db import get_db_engine, save_agent_traces_to_db, save_incident_to_db, save_log_to_db
+from db import (
+    authenticate_user_in_db,
+    create_user_in_db,
+    get_db_engine,
+    save_agent_traces_to_db,
+    save_incident_to_db,
+    save_log_to_db,
+)
 from registry import (
     get_service,
     list_projects,
@@ -113,6 +120,55 @@ class LogIngestResponse(BaseModel):
 class ProjectCreatePayload(BaseModel):
     name: str = Field(..., description="Project name")
     description: str = Field(default="", description="Project description")
+
+
+class UserSignupPayload(BaseModel):
+    email: str = Field(..., description="User email address")
+    username: str = Field(..., description="Username identifier")
+    password: str = Field(..., description="Account password")
+    full_name: str | None = Field(default=None, description="Full display name")
+
+
+class UserLoginPayload(BaseModel):
+    email_or_username: str = Field(..., description="Email address or username")
+    password: str = Field(..., description="Account password")
+
+
+# =========================================================================
+# User Accounts & Authentication APIs
+# =========================================================================
+
+@app.post("/api/auth/signup")
+def api_auth_signup(payload: UserSignupPayload) -> dict[str, Any]:
+    """Registers a new SRE user in Supabase PostgreSQL."""
+    try:
+        user = create_user_in_db(
+            email=payload.email,
+            username=payload.username,
+            password=payload.password,
+            full_name=payload.full_name,
+        )
+        return {"status": "success", "user": user}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Registration failed: {e}")
+
+
+@app.post("/api/auth/login")
+def api_auth_login(payload: UserLoginPayload) -> dict[str, Any]:
+    """Authenticates an SRE user against Supabase PostgreSQL."""
+    try:
+        user = authenticate_user_in_db(
+            email_or_username=payload.email_or_username,
+            password=payload.password,
+        )
+        return {"status": "success", "user": user}
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Authentication failed: {e}")
+
 
 
 class ServiceCreatePayload(BaseModel):

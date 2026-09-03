@@ -404,3 +404,129 @@ def update_incident_status(
         return False
 
 
+# =========================================================================
+# User Accounts & Authentication Layer (Supabase PostgreSQL)
+# =========================================================================
+
+import hashlib
+
+
+def _ensure_users_table() -> None:
+    """Ensures the users table exists in Supabase PostgreSQL."""
+    engine = get_db_engine()
+    if not engine:
+        return
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS users (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        email TEXT UNIQUE NOT NULL,
+                        username TEXT NOT NULL,
+                        full_name TEXT,
+                        password_hash TEXT NOT NULL,
+                        github_pat_encrypted TEXT,
+                        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                    );
+                    """
+                )
+            )
+    except Exception as e:
+        print(f"[AIOps Database] Notice: users table verification: {e}")
+
+
+def _hash_password(password: str) -> str:
+    """Hashes password with SHA-256 and constant salt."""
+    salt = "aiops_enterprise_salt_2026"
+    return hashlib.sha256(f"{salt}:{password}".encode("utf-8")).hexdigest()
+
+
+def create_user_in_db(
+    email: str, username: str, password: str, full_name: str | None = None
+) -> dict[str, Any]:
+    """Registers a new user in Supabase PostgreSQL. Raises ValueError if email exists."""
+    _ensure_users_table()
+    engine = get_db_engine()
+    if not engine:
+        raise RuntimeError("Database connection unavailable.")
+
+    clean_email = email.strip().lower()
+    clean_username = username.strip()
+
+    # Check if user already exists
+    with engine.connect() as conn:
+        existing = conn.execute(
+            text("SELECT id FROM users WHERE email = :email LIMIT 1"),
+            {"email": clean_email},
+        ).fetchone()
+        if existing:
+            raise ValueError(f"An account with email '{clean_email}' already exists. Please sign in.")
+
+    pw_hash = _hash_password(password)
+    with engine.begin() as conn:
+        res = conn.execute(
+            text(
+                """
+                INSERT INTO users (email, username, full_name, password_hash, created_at)
+                VALUES (:email, :username, :full_name, :password_hash, NOW())
+                RETURNING id, email, username, full_name, created_at;
+                """
+            ),
+            {
+                "email": clean_email,
+                "username": clean_username,
+                "full_name": full_name or clean_username,
+                "password_hash": pw_hash,
+            },
+        ).fetchone()
+
+        if res:
+            row = dict(res._mapping)
+            row["id"] = str(row["id"])
+            if "created_at" in row and row["created_at"]:
+                row["created_at"] = str(row["created_at"])
+            return row
+
+    raise RuntimeError("Failed to create user account.")
+
+
+def authenticate_user_in_db(email_or_username: str, password: str) -> dict[str, Any]:
+    """Verifies user credentials in Supabase PostgreSQL."""
+    _ensure_users_table()
+    engine = get_db_engine()
+    if not engine:
+        raise RuntimeError("Database connection unavailable.")
+
+    identifier = email_or_username.strip().lower()
+    pw_hash = _hash_password(password)
+
+    with engine.connect() as conn:
+        user_row = conn.execute(
+            text(
+                """
+                SELECT id, email, username, full_name, password_hash, created_at
+                FROM users
+                WHERE LOWER(email) = :id OR LOWER(username) = :id
+                LIMIT 1;
+                """
+            ),
+            {"id": identifier},
+        ).fetchone()
+
+        if not user_row:
+            raise ValueError(f"No account found with email or username '{email_or_username}'.")
+
+        data = dict(user_row._mapping)
+        if data["password_hash"] != pw_hash:
+            raise ValueError("Incorrect password. Please try again.")
+
+        data["id"] = str(data["id"])
+        data.pop("password_hash", None)
+        if "created_at" in data and data["created_at"]:
+            data["created_at"] = str(data["created_at"])
+        return data
+
+
+

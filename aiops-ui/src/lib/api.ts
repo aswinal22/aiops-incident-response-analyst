@@ -23,6 +23,18 @@ export async function fetchApi<T>(endpoint: string, options?: RequestInit): Prom
 }
 
 export const api = {
+  signup: (payload: { email: string; username: string; password: string; full_name?: string }) =>
+    fetchApi<{ status: string; user: any }>('/api/auth/signup', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  login: (payload: { email_or_username: string; password: string }) =>
+    fetchApi<{ status: string; user: any }>('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
   getHealth: () => fetchApi<HealthStatus>('/health'),
 
   getBuffer: (limit = 100) => fetchApi<{ total_buffered: number; returned: number; logs: LogEntry[] }>(`/buffer?limit=${limit}`),

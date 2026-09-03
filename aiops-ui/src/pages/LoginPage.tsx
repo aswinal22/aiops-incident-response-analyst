@@ -1,50 +1,81 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Zap, User, Lock, ArrowRight, ShieldCheck, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Zap, User, Lock, Mail, ArrowRight, ShieldCheck, UserPlus, LogIn, AlertCircle } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login } = useAuth();
+  const { login, signup } = useAuth();
 
+  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+  const [emailOrUsername, setEmailOrUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
+  const [fullName, setFullName] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showSwitchPrompt, setShowSwitchPrompt] = useState<'to_signup' | 'to_signin' | null>(null);
 
   const from = (location.state as any)?.from?.pathname || '/';
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!username.trim()) {
-      setError('Please enter your username or email.');
-      return;
-    }
-
     setLoading(true);
     setError(null);
+    setShowSwitchPrompt(null);
 
     try {
-      await login(username.trim(), password);
+      if (mode === 'signin') {
+        if (!emailOrUsername.trim()) {
+          setError('Please enter your email or username.');
+          setLoading(false);
+          return;
+        }
+        await login(emailOrUsername.trim(), password);
+      } else {
+        if (!email.trim() || !username.trim() || !password) {
+          setError('Please fill in all required fields.');
+          setLoading(false);
+          return;
+        }
+        await signup(email.trim(), username.trim(), password, fullName.trim() || undefined);
+      }
+
       navigate(from, { replace: true });
     } catch (err: any) {
-      setError(err.message || 'Authentication failed.');
+      const msg = err.message || 'Authentication error';
+      setError(msg);
+
+      if (msg.toLowerCase().includes('no account found') || msg.toLowerCase().includes('not found')) {
+        setShowSwitchPrompt('to_signup');
+      } else if (msg.toLowerCase().includes('already exists')) {
+        setShowSwitchPrompt('to_signin');
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const handleQuickDemoLogin = async () => {
-    setLoading(true);
+  const switchToSignup = () => {
+    setMode('signup');
     setError(null);
-    try {
-      await login('alex.sre@acme.corp', 'demo123');
-      navigate(from, { replace: true });
-    } catch (err: any) {
-      setError(err.message || 'Demo login failed.');
-    } finally {
-      setLoading(false);
+    setShowSwitchPrompt(null);
+    if (emailOrUsername.includes('@')) {
+      setEmail(emailOrUsername);
+      setUsername(emailOrUsername.split('@')[0]);
+    } else if (emailOrUsername) {
+      setUsername(emailOrUsername);
+    }
+  };
+
+  const switchToSignin = () => {
+    setMode('signin');
+    setError(null);
+    setShowSwitchPrompt(null);
+    if (email) {
+      setEmailOrUsername(email);
     }
   };
 
@@ -68,53 +99,162 @@ export const LoginPage: React.FC = () => {
           </p>
         </div>
 
-        {/* Login Card */}
+        {/* Login & Sign Up Card */}
         <div className="bg-surface/90 backdrop-blur-xl border border-border rounded-2xl p-6 shadow-2xl space-y-5">
-          <div className="flex items-center justify-between border-b border-border pb-3">
-            <span className="text-xs font-semibold text-slate-200 uppercase tracking-wider font-mono">
-              Sign In to Command Center
-            </span>
-            <span className="text-[10px] text-emerald-400 font-mono bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-              24/7 Engine Online
-            </span>
+          {/* Tabs: Sign In vs Sign Up */}
+          <div className="grid grid-cols-2 gap-1 p-1 bg-[#090d16] rounded-xl border border-slate-800 text-xs font-medium">
+            <button
+              type="button"
+              onClick={switchToSignin}
+              className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition-all ${
+                mode === 'signin'
+                  ? 'bg-accent-blue/15 text-blue-300 border border-accent-blue/30 font-semibold glow-blue'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <LogIn className="w-3.5 h-3.5" />
+              <span>Sign In</span>
+            </button>
+            <button
+              type="button"
+              onClick={switchToSignup}
+              className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition-all ${
+                mode === 'signup'
+                  ? 'bg-accent-blue/15 text-blue-300 border border-accent-blue/30 font-semibold glow-blue'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              <span>Sign Up</span>
+            </button>
           </div>
 
-          <form onSubmit={handleLogin} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4">
             {error && (
-              <div className="p-3 rounded-lg bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{error}</span>
+              <div className="p-3.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs space-y-2">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                  <span>{error}</span>
+                </div>
+
+                {showSwitchPrompt === 'to_signup' && (
+                  <button
+                    type="button"
+                    onClick={switchToSignup}
+                    className="text-[11px] text-accent-blue hover:underline block font-semibold pt-1"
+                  >
+                    → Click here to Create a New Account
+                  </button>
+                )}
+
+                {showSwitchPrompt === 'to_signin' && (
+                  <button
+                    type="button"
+                    onClick={switchToSignin}
+                    className="text-[11px] text-accent-blue hover:underline block font-semibold pt-1"
+                  >
+                    → Click here to Sign In
+                  </button>
+                )}
               </div>
             )}
 
-            <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">Username or Email *</label>
-              <div className="relative">
-                <User className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. alex.sre@acme.corp"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  className="w-full bg-[#0a0f1d] border border-slate-800 rounded-lg pl-9 pr-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-accent-blue font-mono"
-                />
-              </div>
-            </div>
+            {mode === 'signin' ? (
+              /* Sign In Fields */
+              <>
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1">Email or Username *</label>
+                  <div className="relative">
+                    <User className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. alex@acme.corp or alex_sre"
+                      value={emailOrUsername}
+                      onChange={(e) => setEmailOrUsername(e.target.value)}
+                      className="w-full bg-[#0a0f1d] border border-slate-800 rounded-lg pl-9 pr-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-accent-blue font-mono"
+                    />
+                  </div>
+                </div>
 
-            <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">Password</label>
-              <div className="relative">
-                <Lock className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="password"
-                  placeholder="••••••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-[#0a0f1d] border border-slate-800 rounded-lg pl-9 pr-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-accent-blue font-mono"
-                />
-              </div>
-            </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1">Password *</label>
+                  <div className="relative">
+                    <Lock className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="password"
+                      required
+                      placeholder="••••••••••••"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full bg-[#0a0f1d] border border-slate-800 rounded-lg pl-9 pr-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-accent-blue font-mono"
+                    />
+                  </div>
+                </div>
+              </>
+            ) : (
+              /* Sign Up Fields */
+              <>
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1">Full Name (Optional)</label>
+                  <div className="relative">
+                    <User className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      placeholder="e.g. Alex Morgan"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      className="w-full bg-[#0a0f1d] border border-slate-800 rounded-lg pl-9 pr-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-accent-blue font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1">Email Address *</label>
+                  <div className="relative">
+                    <Mail className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="email"
+                      required
+                      placeholder="e.g. alex@acme.corp"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full bg-[#0a0f1d] border border-slate-800 rounded-lg pl-9 pr-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-accent-blue font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1">Username *</label>
+                  <div className="relative">
+                    <User className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. alex_sre"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      className="w-full bg-[#0a0f1d] border border-slate-800 rounded-lg pl-9 pr-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-accent-blue font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-300 mb-1">Create Password *</label>
+                  <div className="relative">
+                    <Lock className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="password"
+                      required
+                      placeholder="••••••••••••"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="w-full bg-[#0a0f1d] border border-slate-800 rounded-lg pl-9 pr-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-accent-blue font-mono"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
 
             <button
               type="submit"
@@ -124,34 +264,21 @@ export const LoginPage: React.FC = () => {
               {loading ? (
                 <>
                   <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span>Authenticating...</span>
+                  <span>{mode === 'signin' ? 'Authenticating...' : 'Creating Account...'}</span>
                 </>
               ) : (
                 <>
-                  <span>Enter Incident Studio</span>
+                  <span>{mode === 'signin' ? 'Sign In to Workspace' : 'Create Account & Start'}</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </>
               )}
             </button>
           </form>
 
-          {/* Quick Demo Access */}
-          <div className="pt-2 border-t border-slate-800/80">
-            <button
-              type="button"
-              onClick={handleQuickDemoLogin}
-              disabled={loading}
-              className="w-full py-2 rounded-lg bg-surface-elevated hover:bg-surface-hover border border-border text-xs text-slate-300 hover:text-white font-medium transition-colors flex items-center justify-center gap-1.5"
-            >
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Quick Demo Sign In (SRE Lead)</span>
-            </button>
-          </div>
-
-          <div className="pt-2 flex items-center justify-between text-[11px] text-slate-400 font-mono">
+          <div className="pt-2 flex items-center justify-between text-[11px] text-slate-400 font-mono border-t border-slate-800/80">
             <span className="flex items-center gap-1.5">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-              <span>5-Layer Security Verified</span>
+              <span>PostgreSQL Tracked</span>
             </span>
             <span className="text-slate-500">Supabase Auth</span>
           </div>

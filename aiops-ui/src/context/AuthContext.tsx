@@ -11,7 +11,8 @@ interface AuthContextType {
   activeProject: Project | null;
   activeService: Service | null;
   isLoading: boolean;
-  login: (username: string, password?: string) => Promise<void>;
+  login: (email_or_username: string, password: string) => Promise<void>;
+  signup: (email: string, username: string, password: string, full_name?: string) => Promise<void>;
   logout: () => void;
   saveGitHubPat: (pat: string) => Promise<void>;
   setActiveProject: (project: Project | null) => void;
@@ -116,18 +117,50 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [user]);
 
-  const login = async (username: string, _password?: string) => {
-    const userAcc: UserAccount = {
-      username: username.trim(),
-      name: username.split('@')[0],
-      role: 'Site Reliability Engineer',
-      email: username.includes('@') ? username : undefined,
-    };
-    setUser(userAcc);
+  const login = async (email_or_username: string, password: string) => {
     try {
+      const res = await api.login({
+        email_or_username: email_or_username.trim(),
+        password,
+      });
+
+      const userAcc: UserAccount = {
+        username: res.user?.username || email_or_username,
+        name: res.user?.full_name || res.user?.username || email_or_username.split('@')[0],
+        role: 'Site Reliability Engineer',
+        email: res.user?.email,
+      };
+
+      setUser(userAcc);
       localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userAcc));
-    } catch {}
-    await refreshProjectsAndServices();
+      await refreshProjectsAndServices();
+    } catch (err: any) {
+      throw new Error(err.message || 'Login failed.');
+    }
+  };
+
+  const signup = async (email: string, username: string, password: string, full_name?: string) => {
+    try {
+      const res = await api.signup({
+        email: email.trim(),
+        username: username.trim(),
+        password,
+        full_name: full_name?.trim(),
+      });
+
+      const userAcc: UserAccount = {
+        username: res.user?.username || username,
+        name: res.user?.full_name || full_name || username,
+        role: 'Site Reliability Engineer',
+        email: res.user?.email || email,
+      };
+
+      setUser(userAcc);
+      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userAcc));
+      await refreshProjectsAndServices();
+    } catch (err: any) {
+      throw new Error(err.message || 'Signup failed.');
+    }
   };
 
   const logout = () => {
@@ -164,7 +197,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       if (proj) {
         localStorage.setItem(STORAGE_KEYS.ACTIVE_PROJECT, JSON.stringify(proj));
-        // Auto-select first service in project if available
         if (proj.services && proj.services.length > 0) {
           setActiveService(proj.services[0]);
         }
@@ -197,6 +229,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         activeService,
         isLoading,
         login,
+        signup,
         logout,
         saveGitHubPat,
         setActiveProject,
