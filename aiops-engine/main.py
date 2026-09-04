@@ -18,6 +18,7 @@ from typing import Any
 import joblib
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -29,10 +30,12 @@ from agents.graph import create_investigation_graph
 from db import (
     authenticate_user_in_db,
     create_user_in_db,
+    generate_user_session,
     get_db_engine,
     save_agent_traces_to_db,
     save_incident_to_db,
     save_log_to_db,
+    verify_user_token,
 )
 from registry import (
     get_service,
@@ -96,6 +99,15 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
 
+# CORS Middleware (permits Vercel, localhost, and custom cloud frontends)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 # =========================================================================
 # Request & Response Schemas
@@ -134,13 +146,17 @@ class UserLoginPayload(BaseModel):
     password: str = Field(..., description="Account password")
 
 
+class TokenVerifyPayload(BaseModel):
+    token: str = Field(..., description="24-hour signed session token")
+
+
 # =========================================================================
 # User Accounts & Authentication APIs
 # =========================================================================
 
 @app.post("/api/auth/signup")
 def api_auth_signup(payload: UserSignupPayload) -> dict[str, Any]:
-    """Registers a new SRE user in Supabase PostgreSQL."""
+    """Registers a new SRE user in Supabase PostgreSQL and returns 24-hour session."""
     try:
         user = create_user_in_db(
             email=payload.email,
@@ -148,7 +164,13 @@ def api_auth_signup(payload: UserSignupPayload) -> dict[str, Any]:
             password=payload.password,
             full_name=payload.full_name,
         )
-        return {"status": "success", "user": user}
+        session = generate_user_session(user)
+        return {
+            "status": "success",
+            "user": session["user"],
+            "token": session["token"],
+            "expires_at": session["expires_at"],
+        }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -157,17 +179,35 @@ def api_auth_signup(payload: UserSignupPayload) -> dict[str, Any]:
 
 @app.post("/api/auth/login")
 def api_auth_login(payload: UserLoginPayload) -> dict[str, Any]:
-    """Authenticates an SRE user against Supabase PostgreSQL."""
+    """Authenticates an SRE user against Supabase PostgreSQL and returns 24-hour session."""
     try:
         user = authenticate_user_in_db(
             email_or_username=payload.email_or_username,
             password=payload.password,
         )
-        return {"status": "success", "user": user}
+        session = generate_user_session(user)
+        return {
+            "status": "success",
+            "user": session["user"],
+            "token": session["token"],
+            "expires_at": session["expires_at"],
+        }
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Authentication failed: {e}")
+
+
+@app.post("/api/auth/verify")
+def api_auth_verify(payload: TokenVerifyPayload) -> dict[str, Any]:
+    """Validates an SRE user's 24-hour authentication session token."""
+    try:
+        res = verify_user_token(payload.token)
+        return res
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Token verification error: {e}")
 
 
 

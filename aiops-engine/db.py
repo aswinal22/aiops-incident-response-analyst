@@ -409,6 +409,8 @@ def update_incident_status(
 # =========================================================================
 
 import hashlib
+import hmac
+import time
 
 
 def _ensure_users_table() -> None:
@@ -527,6 +529,82 @@ def authenticate_user_in_db(email_or_username: str, password: str) -> dict[str, 
         if "created_at" in data and data["created_at"]:
             data["created_at"] = str(data["created_at"])
         return data
+
+
+def generate_user_session(user_dict: dict[str, Any]) -> dict[str, Any]:
+    """Generates a 24-hour signed authentication session token for the user."""
+    user_id = str(user_dict.get("id", "00000000-0000-0000-0000-000000000000"))
+    expires_at_sec = int(time.time()) + (24 * 3600)
+    secret = os.getenv("SECRET_KEY", "aiops_session_signature_secret_2026")
+    msg = f"{user_id}:{expires_at_sec}"
+    sig = hmac.new(secret.encode("utf-8"), msg.encode("utf-8"), hashlib.sha256).hexdigest()
+    token = f"{user_id}.{expires_at_sec}.{sig}"
+    return {
+        "user": user_dict,
+        "token": token,
+        "expires_at": expires_at_sec * 1000,
+    }
+
+
+def verify_user_token(token: str) -> dict[str, Any]:
+    """Validates a signed 24-hour auth token and returns user details and expiration."""
+    try:
+        parts = token.strip().split(".")
+        if len(parts) != 3:
+            raise ValueError("Malformed authentication token.")
+
+        user_id, exp_str, sig = parts
+        exp_sec = int(exp_str)
+        now_sec = int(time.time())
+
+        if now_sec > exp_sec:
+            raise ValueError("Authentication token has expired (24-hour limit exceeded).")
+
+        secret = os.getenv("SECRET_KEY", "aiops_session_signature_secret_2026")
+        msg = f"{user_id}:{exp_sec}"
+        expected_sig = hmac.new(secret.encode("utf-8"), msg.encode("utf-8"), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(sig, expected_sig):
+            raise ValueError("Invalid authentication token signature.")
+
+        # Look up user in database if engine is available
+        engine = get_db_engine()
+        if engine:
+            try:
+                with engine.connect() as conn:
+                    user_row = conn.execute(
+                        text("SELECT id, email, username, full_name, created_at FROM users WHERE CAST(id AS TEXT) = :uid LIMIT 1"),
+                        {"uid": user_id},
+                    ).fetchone()
+                    if user_row:
+                        data = dict(user_row._mapping)
+                        data["id"] = str(data["id"])
+                        if "created_at" in data and data["created_at"]:
+                            data["created_at"] = str(data["created_at"])
+                        return {
+                            "status": "valid",
+                            "user": data,
+                            "token": token,
+                            "expires_at": exp_sec * 1000,
+                            "expires_in_hours": round((exp_sec - now_sec) / 3600, 2),
+                        }
+            except Exception as db_err:
+                print(f"[AIOps Database] Token DB lookup notice: {db_err}")
+
+        # Fallback for demo account or offline state
+        return {
+            "status": "valid",
+            "user": {
+                "id": user_id,
+                "username": "sre_lead",
+                "full_name": "SRE Lead Analyst",
+                "email": "lead@aiops.corp",
+            },
+            "token": token,
+            "expires_at": exp_sec * 1000,
+            "expires_in_hours": round((exp_sec - now_sec) / 3600, 2),
+        }
+    except Exception as e:
+        raise ValueError(f"Token verification failed: {e}")
 
 
 

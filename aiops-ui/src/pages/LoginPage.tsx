@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Zap, User, Lock, Mail, ArrowRight, ShieldCheck, UserPlus, LogIn, AlertCircle } from 'lucide-react';
+import { Zap, User, Lock, Mail, ArrowRight, ShieldCheck, UserPlus, LogIn, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, signup } = useAuth();
+  const { login, signup, demoLogin } = useAuth();
 
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [emailOrUsername, setEmailOrUsername] = useState('');
@@ -76,6 +76,19 @@ export const LoginPage: React.FC = () => {
     setShowSwitchPrompt(null);
     if (email) {
       setEmailOrUsername(email);
+    }
+  };
+
+  const handleQuickDemo = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      await demoLogin();
+      navigate(from, { replace: true });
+    } catch (err: any) {
+      setError(err.message || 'Demo login failed');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -275,12 +288,25 @@ export const LoginPage: React.FC = () => {
             </button>
           </form>
 
+          {/* Quick Demo Evaluation Access */}
+          <div className="pt-2 border-t border-slate-800/80">
+            <button
+              type="button"
+              onClick={handleQuickDemo}
+              disabled={loading}
+              className="w-full py-2.5 rounded-lg bg-surface hover:bg-[#131b2e] border border-slate-700 hover:border-accent-blue/40 text-xs text-slate-300 hover:text-white font-medium transition-all flex items-center justify-center gap-2 group shadow-sm"
+            >
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 group-hover:scale-110 transition-transform" />
+              <span>Quick Demo Sign In (24h SRE Session)</span>
+            </button>
+          </div>
+
           <div className="pt-2 flex items-center justify-between text-[11px] text-slate-400 font-mono border-t border-slate-800/80">
             <span className="flex items-center gap-1.5">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-              <span>PostgreSQL Tracked</span>
+              <span>24h Token Protected</span>
             </span>
-            <span className="text-slate-500">Supabase Auth</span>
+            <span className="text-slate-500">Supabase & Render</span>
           </div>
         </div>
       </div>

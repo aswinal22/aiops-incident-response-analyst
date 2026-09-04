@@ -14,9 +14,23 @@ export async function fetchApi<T>(endpoint: string, options?: RequestInit): Prom
     ...options,
   });
 
+  const contentType = res.headers.get('content-type') || '';
+
   if (!res.ok) {
-    const errorText = await res.text();
-    throw new Error(`API Error (${res.status}): ${errorText || res.statusText}`);
+    let errorDetail = res.statusText;
+    try {
+      const errJson = await res.json();
+      errorDetail = errJson.detail || errJson.message || JSON.stringify(errJson);
+    } catch {
+      const text = await res.text();
+      errorDetail = text.slice(0, 150) || res.statusText;
+    }
+    throw new Error(`API Error (${res.status}): ${errorDetail}`);
+  }
+
+  // If status is 200 but content is HTML, it means Vercel or proxy returned index.html fallback
+  if (contentType.includes('text/html')) {
+    throw new Error('Backend API endpoint returned HTML. Ensure VITE_API_URL points to active backend service.');
   }
 
   return res.json();
@@ -24,15 +38,21 @@ export async function fetchApi<T>(endpoint: string, options?: RequestInit): Prom
 
 export const api = {
   signup: (payload: { email: string; username: string; password: string; full_name?: string }) =>
-    fetchApi<{ status: string; user: any }>('/api/auth/signup', {
+    fetchApi<{ status: string; user: any; token: string; expires_at: number }>('/api/auth/signup', {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
 
   login: (payload: { email_or_username: string; password: string }) =>
-    fetchApi<{ status: string; user: any }>('/api/auth/login', {
+    fetchApi<{ status: string; user: any; token: string; expires_at: number }>('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify(payload),
+    }),
+
+  verifyToken: (token: string) =>
+    fetchApi<{ status: string; user: any; token: string; expires_at: number; expires_in_hours: number }>('/api/auth/verify', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
     }),
 
   getHealth: () => fetchApi<HealthStatus>('/health'),

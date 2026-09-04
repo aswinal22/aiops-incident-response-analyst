@@ -44,10 +44,13 @@ export interface Project {
 }
 
 export interface UserAccount {
+  id?: string;
   username: string;
   name: string;
   role: string;
   email?: string;
+  token?: string;
+  expires_at?: number;
 }
 
 export interface Incident {
