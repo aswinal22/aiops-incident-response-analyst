@@ -55,7 +55,7 @@ export const api = {
       body: JSON.stringify({ token }),
     }),
 
-  getHealth: () => fetchApi<HealthStatus>('/health'),
+  getHealth: () => fetchApi<HealthStatus>('/api/health'),
 
   getBuffer: (limit = 100) => fetchApi<{ total_buffered: number; returned: number; logs: LogEntry[] }>(`/buffer?limit=${limit}`),
 

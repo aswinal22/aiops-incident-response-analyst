@@ -282,6 +282,7 @@ def root_status() -> dict[str, str]:
 
 
 @app.get("/health")
+@app.get("/api/health")
 def health_check() -> dict[str, str]:
     """Health check endpoint."""
     return {
