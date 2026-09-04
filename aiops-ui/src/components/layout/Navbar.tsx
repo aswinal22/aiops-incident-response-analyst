@@ -146,10 +146,7 @@ export const Navbar: React.FC = () => {
             </div>
             <div className="hidden xl:block text-left leading-tight">
               <div className="text-xs font-semibold text-slate-200">{user.name}</div>
-              <div className="text-[10px] text-emerald-400 font-mono flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
-                <span>24h Session</span>
-              </div>
+              <div className="text-[10px] text-slate-400 font-mono">{user.role || 'SRE Analyst'}</div>
             </div>
 
             <button

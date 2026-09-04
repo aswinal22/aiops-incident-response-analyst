@@ -35,6 +35,8 @@ export const ProjectsPage: React.FC = () => {
     setRefreshing(false);
   };
 
+  const safeProjects = Array.isArray(projects) ? projects : [];
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -72,7 +74,7 @@ export const ProjectsPage: React.FC = () => {
 
       {/* Projects List */}
       <div className="space-y-6">
-        {projects.length === 0 ? (
+        {safeProjects.length === 0 ? (
           <div className="p-12 text-center bg-surface border border-border rounded-2xl space-y-3">
             <Folder className="w-8 h-8 text-slate-500 mx-auto" />
             <h3 className="text-sm font-bold text-slate-200">No Projects Configured</h3>
@@ -88,9 +90,9 @@ export const ProjectsPage: React.FC = () => {
             </button>
           </div>
         ) : (
-          projects.map((proj) => {
+          safeProjects.map((proj) => {
             const isCurrentProj = activeProject?.id === proj.id;
-            const services = proj.services || [];
+            const services = Array.isArray(proj.services) ? proj.services : [];
 
             return (
               <div

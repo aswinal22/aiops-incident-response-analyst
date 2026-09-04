@@ -16,8 +16,8 @@ export const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ childr
           <ShieldCheck className="w-5 h-5 text-accent-blue absolute inset-0 m-auto" />
         </div>
         <div className="text-center space-y-1">
-          <p className="text-xs font-mono font-medium text-slate-200">Verifying 24h Session...</p>
-          <p className="text-[11px] text-slate-400">Validating Secure Session...</p>
+          <p className="text-xs font-mono font-medium text-slate-200">Verifying Session...</p>
+          <p className="text-[11px] text-slate-400">Validating Secure Workspace...</p>
         </div>
       </div>
     );
