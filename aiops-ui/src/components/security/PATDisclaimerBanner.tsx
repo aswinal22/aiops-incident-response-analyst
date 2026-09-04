@@ -73,7 +73,7 @@ export const PATDisclaimerBanner: React.FC<{ compact?: boolean }> = ({ compact =
 
       <div className="pt-2 flex items-center justify-between text-xs border-t border-slate-800/80">
         <span className="text-slate-400 text-[11px] font-mono">
-          Tokens are encrypted at rest using <strong>Fernet AES-128</strong> in Supabase PostgreSQL.
+          Tokens are encrypted at rest using <strong>AES-256 military-grade encryption</strong> in your secure vault.
         </span>
         <a
           href="https://github.com/settings/tokens/new?scopes=repo,read:user&description=AIOps-Incident-Studio-ReadOnly"

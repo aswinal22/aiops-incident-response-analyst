@@ -41,7 +41,7 @@ export const IncidentTrendChart: React.FC<IncidentTrendChartProps> = ({ incident
           <BarChart3 className="w-4 h-4 text-accent-blue" />
           <span>Incident Distribution by Microservice & Severity</span>
         </div>
-        <span className="text-[11px] text-slate-400 font-mono">Live PostgreSQL Aggregation</span>
+        <span className="text-[11px] text-slate-400 font-mono">Real-Time Incident Telemetry</span>
       </div>
 
       <div className="h-64 w-full">

@@ -73,7 +73,7 @@ export const RemediationActionCenter: React.FC<RemediationActionCenterProps> = (
             <span>Interactive Remediation Action Center</span>
           </h3>
           <p className="text-xs text-slate-400">
-            Check off fixes as your SRE team mitigates this outage (persisted to Supabase).
+            Check off fixes as your team mitigates this outage (saved automatically in real-time).
           </p>
         </div>
 

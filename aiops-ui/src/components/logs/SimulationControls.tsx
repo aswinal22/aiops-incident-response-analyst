@@ -105,7 +105,7 @@ export const SimulationControls: React.FC<SimulationControlsProps> = ({ onSucces
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400 font-medium">Infra Bug</span>
           </div>
           <p className="text-[11px] text-slate-400 leading-snug">
-            Simulates pool exhaustion and postgres connection timeout.
+            Simulates database pool exhaustion and connection timeout.
           </p>
           <div className="mt-3 text-[11px] text-purple-400 font-medium group-hover:underline">
             {loadingType === 'database_timeout' ? 'Triggering...' : 'Simulate Outage →'}

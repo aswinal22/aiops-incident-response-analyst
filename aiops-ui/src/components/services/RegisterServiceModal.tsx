@@ -79,7 +79,7 @@ export const RegisterServiceModal: React.FC<RegisterServiceModalProps> = ({
             <div>
               <h4 className="text-sm font-bold text-slate-100">Microservice Registered Successfully!</h4>
               <p className="text-xs text-slate-400 mt-1">
-                Configure your Render/Vercel/K8s log drain to send stdout to this dedicated webhook:
+                Configure your cloud provider or service log drain to forward stdout to this dedicated webhook:
               </p>
             </div>
 

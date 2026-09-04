@@ -41,12 +41,12 @@ export const Sidebar: React.FC = () => {
       <div className="pt-3 border-t border-border space-y-2">
         <div className="p-2.5 rounded-xl bg-surface-elevated border border-border/60 text-[11px] font-mono space-y-1">
           <div className="text-slate-400 flex items-center justify-between">
-            <span>24/7 Engine:</span>
-            <span className="text-emerald-400 font-semibold">FastAPI + Render</span>
+            <span>Engine Status:</span>
+            <span className="text-emerald-400 font-semibold">Operational (24/7)</span>
           </div>
           <div className="text-slate-400 flex items-center justify-between">
-            <span>RCA Agent:</span>
-            <span className="text-purple-400 font-semibold">LangGraph Groq</span>
+            <span>AI Triage:</span>
+            <span className="text-purple-400 font-semibold">Autonomous Active</span>
           </div>
         </div>
 

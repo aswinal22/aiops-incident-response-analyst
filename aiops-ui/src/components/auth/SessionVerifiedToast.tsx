@@ -72,7 +72,7 @@ export const SessionVerifiedToast: React.FC<SessionVerifiedToastProps> = ({ toas
               </span>
               <span className="flex items-center gap-1 text-slate-400">
                 <Server className="w-3 h-3 text-blue-400" />
-                <span>Render / Supabase verified</span>
+                <span>Cloud Session Active</span>
               </span>
             </div>
           </div>

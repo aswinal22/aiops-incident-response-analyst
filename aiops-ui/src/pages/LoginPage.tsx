@@ -304,9 +304,9 @@ export const LoginPage: React.FC = () => {
           <div className="pt-2 flex items-center justify-between text-[11px] text-slate-400 font-mono border-t border-slate-800/80">
             <span className="flex items-center gap-1.5">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-              <span>24h Token Protected</span>
+              <span>24h Session Protected</span>
             </span>
-            <span className="text-slate-500">Supabase & Render</span>
+            <span className="text-slate-500">Enterprise Encrypted</span>
           </div>
         </div>
       </div>

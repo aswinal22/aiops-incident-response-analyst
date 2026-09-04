@@ -36,7 +36,7 @@ export const AgentTraceWaterfall: React.FC<AgentTraceWaterfallProps> = ({ traces
       case 'code_investigator':
         return 'Node 2: Code Investigator (MCP)';
       case 'rca_synthesizer':
-        return 'Node 3: RCA Synthesizer (Groq LLM)';
+        return 'Node 3: Autonomous RCA Synthesizer';
       default:
         return name;
     }

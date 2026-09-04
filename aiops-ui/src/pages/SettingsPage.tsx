@@ -107,7 +107,7 @@ export const SettingsPage: React.FC = () => {
               className="w-full bg-[#0a0f1d] border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-accent-blue font-mono"
             />
             <p className="text-[11px] text-slate-500 mt-1">
-              Stored with <strong>Fernet AES-128 encryption</strong> in PostgreSQL and decrypted only in RAM during multi-agent triage.
+              Stored with <strong>AES-256 encryption</strong> and decrypted only in secure memory during autonomous triage.
             </p>
           </div>
 
