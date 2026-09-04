@@ -29,16 +29,7 @@ export const ProjectScopeModal: React.FC<ProjectScopeModalProps> = ({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (savedPat) {
-      setPat(savedPat);
-      loadRepos(savedPat);
-    }
-  }, [savedPat, isOpen]);
-
-  if (!isOpen || !project) return null;
-
-  const loadRepos = async (tokenToUse: string) => {
+  const loadRepos = React.useCallback(async (tokenToUse: string) => {
     if (!tokenToUse.trim()) return;
     setLoadingRepos(true);
     setError(null);
@@ -50,7 +41,16 @@ export const ProjectScopeModal: React.FC<ProjectScopeModalProps> = ({
     } finally {
       setLoadingRepos(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (savedPat) {
+      setPat(savedPat);
+      loadRepos(savedPat);
+    }
+  }, [savedPat, isOpen, loadRepos]);
+
+  if (!isOpen || !project) return null;
 
   const handleSelectRepo = (repo: GitHubRepo) => {
     setSelectedRepo(repo);
