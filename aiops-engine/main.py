@@ -45,6 +45,7 @@ from registry import (
     delete_project,
     delete_service,
     get_service,
+    init_registry_db,
     list_projects,
     list_services,
     register_project,
@@ -67,6 +68,12 @@ investigation_graph: Any | None = None
 async def lifespan(app: FastAPI):
     """Lifespan context manager to load ML model and initialize LangGraph on startup."""
     global ml_model, investigation_graph
+
+    print("[AIOps Engine] Initializing database mapping tables...")
+    try:
+        init_registry_db()
+    except Exception as e:
+        print(f"[AIOps Engine] Registry init notice: {e}")
 
     model_path = Path(__file__).resolve().parent / "ml" / "model.joblib"
     if model_path.exists():

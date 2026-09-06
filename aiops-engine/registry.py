@@ -17,14 +17,49 @@ _SERVICE_CACHE: dict[str, dict[str, Any]] = {}
 
 
 def _get_sqlite_connection() -> sqlite3.Connection:
-    """Returns SQLite connection with row factory enabled for local fallback."""
+    """Returns SQLite connection with row factory enabled for local fallback and ensures tables exist."""
     conn = sqlite3.connect(str(SQLITE_DB_PATH))
     conn.row_factory = sqlite3.Row
+    # Ensure fallback SQLite tables exist
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS projects (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+    )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS services (
+            id TEXT PRIMARY KEY,
+            project_id TEXT,
+            name TEXT NOT NULL UNIQUE,
+            repo_url TEXT,
+            repo_owner TEXT,
+            repo_name TEXT,
+            github_pat_encrypted TEXT,
+            workspace_path TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        """
+    )
+    conn.commit()
     return conn
 
 
 def init_registry_db() -> None:
-    """Ensures projects and services schema exist in Supabase PostgreSQL or SQLite fallback."""
+    """Ensures projects and services schema exist in Supabase PostgreSQL and SQLite fallback."""
+    # 1. Ensure local SQLite tables exist
+    try:
+        with _get_sqlite_connection() as conn:
+            pass
+    except Exception as e:
+        print(f"[Service Registry] SQLite init notice: {e}")
+
+    # 2. Ensure Supabase PostgreSQL tables exist
     engine = get_db_engine()
     if engine is not None:
         try:
@@ -63,39 +98,8 @@ def init_registry_db() -> None:
                 )
 
             print("[Service Registry] Supabase PostgreSQL mapping tables verified & active.")
-            return
         except Exception as e:
-            print(f"[Service Registry] Supabase initialization fallback to SQLite: {e}")
-
-    # Fallback to local SQLite
-    with _get_sqlite_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS projects (
-                id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                description TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-            """
-        )
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS services (
-                id TEXT PRIMARY KEY,
-                project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-                name TEXT NOT NULL UNIQUE,
-                repo_url TEXT,
-                repo_owner TEXT,
-                repo_name TEXT,
-                github_pat_encrypted TEXT,
-                workspace_path TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-            """
-        )
-        conn.commit()
+            print(f"[Service Registry] Supabase initialization notice: {e}")
 
 
 def register_project(name: str, description: str = "") -> str:
@@ -246,7 +250,7 @@ def get_service(service_id_or_name: str) -> dict[str, Any] | None:
                         """
                         SELECT s.*, p.name as project_name
                         FROM services s
-                        JOIN projects p ON s.project_id = p.id
+                        LEFT JOIN projects p ON s.project_id = p.id
                         WHERE s.id = CAST(:identifier AS UUID) OR s.name = :identifier
                         LIMIT 1;
                         """
@@ -256,7 +260,7 @@ def get_service(service_id_or_name: str) -> dict[str, Any] | None:
                         """
                         SELECT s.*, p.name as project_name
                         FROM services s
-                        JOIN projects p ON s.project_id = p.id
+                        LEFT JOIN projects p ON s.project_id = p.id
                         WHERE s.name = :identifier
                         LIMIT 1;
                         """
@@ -267,7 +271,7 @@ def get_service(service_id_or_name: str) -> dict[str, Any] | None:
                 if row:
                     data = dict(row._mapping)
                     data["id"] = str(data.get("id"))
-                    data["project_id"] = str(data.get("project_id"))
+                    data["project_id"] = str(data.get("project_id")) if data.get("project_id") else None
                     enc_pat = data.get("github_pat_encrypted")
                     data["github_pat"] = decrypt_token(enc_pat) if enc_pat else None
 
@@ -275,30 +279,36 @@ def get_service(service_id_or_name: str) -> dict[str, Any] | None:
                     _SERVICE_CACHE[data["id"]] = data
                     _SERVICE_CACHE[data["name"]] = data
                     return data
+                else:
+                    # Service definitely not in Supabase
+                    return None
         except Exception as e:
             print(f"[Service Registry] Supabase get_service query error: {e}")
 
     # Fallback to SQLite
-    with _get_sqlite_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            SELECT s.*, p.name as project_name
-            FROM services s
-            JOIN projects p ON s.project_id = p.id
-            WHERE s.id = ? OR s.name = ?
-            LIMIT 1;
-            """,
-            (service_id_or_name, service_id_or_name),
-        )
-        row = cursor.fetchone()
-        if row:
-            data = dict(row)
-            enc_pat = data.get("github_pat_encrypted")
-            data["github_pat"] = decrypt_token(enc_pat) if enc_pat else None
-            _SERVICE_CACHE[data["id"]] = data
-            _SERVICE_CACHE[data["name"]] = data
-            return data
+    try:
+        with _get_sqlite_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT s.*, p.name as project_name
+                FROM services s
+                LEFT JOIN projects p ON s.project_id = p.id
+                WHERE s.id = ? OR s.name = ?
+                LIMIT 1;
+                """,
+                (service_id_or_name, service_id_or_name),
+            )
+            row = cursor.fetchone()
+            if row:
+                data = dict(row)
+                enc_pat = data.get("github_pat_encrypted")
+                data["github_pat"] = decrypt_token(enc_pat) if enc_pat else None
+                _SERVICE_CACHE[data["id"]] = data
+                _SERVICE_CACHE[data["name"]] = data
+                return data
+    except Exception as e:
+        print(f"[Service Registry] SQLite get_service error: {e}")
 
     return None
 
@@ -333,24 +343,28 @@ def list_services(project_id: str | None = None) -> list[dict[str, Any]]:
                 for row in result.fetchall():
                     item = dict(row._mapping)
                     item["id"] = str(item.get("id"))
-                    item["project_id"] = str(item.get("project_id"))
+                    item["project_id"] = str(item.get("project_id")) if item.get("project_id") else None
                     rows.append(item)
                 return rows
         except Exception as e:
             print(f"[Service Registry] Supabase list_services error: {e}")
 
-    with _get_sqlite_connection() as conn:
-        cursor = conn.cursor()
-        if project_id:
-            cursor.execute(
-                "SELECT id, project_id, name, repo_url, repo_owner, repo_name, workspace_path, created_at FROM services WHERE project_id = ?",
-                (project_id,),
-            )
-        else:
-            cursor.execute(
-                "SELECT id, project_id, name, repo_url, repo_owner, repo_name, workspace_path, created_at FROM services"
-            )
-        return [dict(row) for row in cursor.fetchall()]
+    try:
+        with _get_sqlite_connection() as conn:
+            cursor = conn.cursor()
+            if project_id:
+                cursor.execute(
+                    "SELECT id, project_id, name, repo_url, repo_owner, repo_name, workspace_path, created_at FROM services WHERE project_id = ?",
+                    (project_id,),
+                )
+            else:
+                cursor.execute(
+                    "SELECT id, project_id, name, repo_url, repo_owner, repo_name, workspace_path, created_at FROM services"
+                )
+            return [dict(row) for row in cursor.fetchall()]
+    except Exception as e:
+        print(f"[Service Registry] SQLite list_services error: {e}")
+        return []
 
 
 def list_projects() -> list[dict[str, Any]]:
@@ -369,10 +383,14 @@ def list_projects() -> list[dict[str, Any]]:
         except Exception as e:
             print(f"[Service Registry] Supabase list_projects error: {e}")
 
-    with _get_sqlite_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT id, name, description, created_at FROM projects")
-        return [dict(row) for row in cursor.fetchall()]
+    try:
+        with _get_sqlite_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, name, description, created_at FROM projects")
+            return [dict(row) for row in cursor.fetchall()]
+    except Exception as e:
+        print(f"[Service Registry] SQLite list_projects error: {e}")
+        return []
 
 
 def delete_project(project_id: str) -> bool:
@@ -390,10 +408,13 @@ def delete_project(project_id: str) -> bool:
         except Exception as e:
             print(f"[Service Registry] Supabase delete_project error: {e}")
 
-    with _get_sqlite_connection() as conn:
-        conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
-        conn.execute("DELETE FROM services WHERE project_id = ?", (project_id,))
-        conn.commit()
+    try:
+        with _get_sqlite_connection() as conn:
+            conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+            conn.execute("DELETE FROM services WHERE project_id = ?", (project_id,))
+            conn.commit()
+    except Exception as e:
+        print(f"[Service Registry] SQLite delete_project error: {e}")
     _SERVICE_CACHE.clear()
     return True
 
@@ -413,9 +434,12 @@ def delete_service(service_id: str) -> bool:
         except Exception as e:
             print(f"[Service Registry] Supabase delete_service error: {e}")
 
-    with _get_sqlite_connection() as conn:
-        conn.execute("DELETE FROM services WHERE id = ? OR name = ?", (service_id, service_id))
-        conn.commit()
+    try:
+        with _get_sqlite_connection() as conn:
+            conn.execute("DELETE FROM services WHERE id = ? OR name = ?", (service_id, service_id))
+            conn.commit()
+    except Exception as e:
+        print(f"[Service Registry] SQLite delete_service error: {e}")
     _SERVICE_CACHE.clear()
     return True
 

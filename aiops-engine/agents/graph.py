@@ -14,6 +14,7 @@ from agents.state import AgentState
 from mcp_servers.codebase_mcp import (
     get_file_structure,
     get_recent_git_changes,
+    list_commits,
     read_architecture_context,
     read_file,
 )
@@ -91,29 +92,41 @@ def create_investigation_graph(
         """Invokes MCP tools to inspect architecture, source code, and git changes."""
         start_time = time.perf_counter()
         log_msg = state.get("log_message", "")
+        service_name = state.get("service_name") or "target-app"
         metrics = dict(state.get("metrics", {}))
 
+        tools_called: list[str] = []
+
         # 1. Gather architecture context via MCP tool
-        arch_context = read_architecture_context()
+        try:
+            arch_context = read_architecture_context(service_name=service_name)
+            tools_called.append(f"read_architecture_context('{service_name}')")
+        except Exception as e:
+            arch_context = f"Architecture context notice: {e}"
 
         # 2. Gather file structure via MCP tool
-        file_tree = get_file_structure()
+        try:
+            file_tree = get_file_structure(service_name=service_name)
+            tools_called.append(f"get_file_structure('{service_name}')")
+        except Exception as e:
+            file_tree = f"File structure notice: {e}"
 
         # 3. Gather recent git changes via MCP tool
-        git_changes = get_recent_git_changes()
+        try:
+            git_changes = list_commits(service_name=service_name, limit=3)
+            tools_called.append(f"list_commits('{service_name}')")
+        except Exception as e:
+            git_changes = f"Recent git changes notice: {e}"
 
         # 4. Gather file contents for relevant files mentioned in traceback
         target_code = ""
-        tools_called = [
-            "read_architecture_context",
-            "get_file_structure",
-            "get_recent_git_changes",
-        ]
-
-        if "main.py" in log_msg or "main.py" in file_tree:
-            main_code = read_file("main.py")
-            target_code += f"\n--- target-app/main.py ---\n{main_code}\n"
-            tools_called.append("read_file('main.py')")
+        try:
+            if "main.py" in log_msg or "main.py" in file_tree:
+                main_code = read_file("main.py", service_name=service_name)
+                target_code += f"\n--- {service_name}/main.py ---\n{main_code}\n"
+                tools_called.append(f"read_file('main.py', service_name='{service_name}')")
+        except Exception as e:
+            target_code += f"\nFile content notice: {e}\n"
 
         code_context = (
             f"### Architecture Context:\n{arch_context}\n\n"
