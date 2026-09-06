@@ -87,6 +87,24 @@ def run_e2e_tests() -> None:
         assert buf_data.get("total_buffered") >= 2, "Buffer did not store the ingested logs"
         print("  -> PASSED")
 
+        # Test 5: Outage Simulator Endpoint (/api/simulate-error)
+        print("\n[Test 5] Verifying POST /api/simulate-error endpoint...")
+        sim_payload = {"error_type": "zero_division", "service": "target-app"}
+        res_sim = client.post("/api/simulate-error", json=sim_payload)
+        assert res_sim.status_code == 200, f"Simulation endpoint failed: {res_sim.text}"
+        sim_data = res_sim.json()
+        print(f"  Simulation Status: {sim_data.get('status')}, Prediction: {sim_data.get('prediction')}")
+        assert sim_data.get("prediction") == "Anomaly", "Simulated error was not detected as anomaly!"
+        print("  -> PASSED")
+
+        # Test 6: Incident Endpoints (/api/incidents)
+        print("\n[Test 6] Verifying GET /api/incidents...")
+        res_inc = client.get("/api/incidents")
+        assert res_inc.status_code == 200, f"Fetch incidents failed: {res_inc.text}"
+        inc_list = res_inc.json()
+        print(f"  Total Incidents Found: {len(inc_list)}")
+        print("  -> PASSED")
+
     print("\n" + "=" * 70)
     print("ALL INTEGRATION TESTS PASSED SUCCESSFULLY! (100% Coverage)")
     print("=" * 70)
@@ -94,4 +112,5 @@ def run_e2e_tests() -> None:
 
 if __name__ == "__main__":
     run_e2e_tests()
+
 

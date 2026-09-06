@@ -12,6 +12,7 @@ Includes:
 import os
 from collections import deque
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -32,9 +33,12 @@ from db import (
     create_user_in_db,
     generate_user_session,
     get_db_engine,
+    get_incident_by_id,
+    get_incidents,
     save_agent_traces_to_db,
     save_incident_to_db,
     save_log_to_db,
+    update_incident_status,
     verify_user_token,
 )
 from registry import (
@@ -150,6 +154,17 @@ class UserLoginPayload(BaseModel):
 
 class TokenVerifyPayload(BaseModel):
     token: str = Field(..., description="24-hour signed session token")
+
+
+class ErrorSimulatePayload(BaseModel):
+    error_type: str = Field(default="file_not_found", description="Type of error to simulate (file_not_found, zero_division, database_timeout)")
+    service: str = Field(default="target-app", description="Name or UUID of emitting microservice")
+
+
+class IncidentUpdatePayload(BaseModel):
+    status: str | None = Field(default=None, description="Updated status: Open, In Progress, Resolved")
+    immediate_fixes: list[dict[str, Any]] | None = Field(default=None, description="Checklist of immediate fixes")
+    long_term_prevention: list[dict[str, Any]] | None = Field(default=None, description="Checklist of long term prevention tasks")
 
 
 # =========================================================================
@@ -473,3 +488,86 @@ async def ingest_logs_by_service_id(
         timestamp=payload.timestamp,
         service_id_or_name=service_id,
     )
+
+
+# =========================================================================
+# Outage Simulator & Incident Management APIs
+# =========================================================================
+
+@app.post("/api/simulate-error")
+async def api_simulate_error(payload: ErrorSimulatePayload) -> LogIngestResponse:
+    """Simulates realistic microservice failure tracebacks and processes them through the AIOps pipeline."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    service_name = payload.service or "target-app"
+    err_type = (payload.error_type or "").lower()
+
+    if "file" in err_type:
+        traceback_msg = (
+            f"[{now_iso}] [ERROR] [{service_name}] Simulated Application Failure [FileNotFoundError]: "
+            f"Configuration file '/app/config/settings.yaml' not found in path.\n"
+            f"Traceback (most recent call last):\n"
+            f'  File "/app/{service_name}/main.py", line 39, in simulate_error\n'
+            f'    raise FileNotFoundError("Configuration file \'/app/config/settings.yaml\' not found in path.")\n'
+            f"FileNotFoundError: Configuration file '/app/config/settings.yaml' not found in path."
+        )
+    elif "zero" in err_type or "div" in err_type:
+        traceback_msg = (
+            f"[{now_iso}] [ERROR] [{service_name}] Simulated Application Failure [ZeroDivisionError]: division by zero\n"
+            f"Traceback (most recent call last):\n"
+            f'  File "/app/{service_name}/services/calculator.py", line 43, in calculate_user_discount\n'
+            f"    return total_amount / discount_factor\n"
+            f"ZeroDivisionError: division by zero"
+        )
+    elif "db" in err_type or "time" in err_type or "data" in err_type:
+        traceback_msg = (
+            f"[{now_iso}] [ERROR] [{service_name}] Simulated Application Failure [TimeoutError]: "
+            f"Database connection timed out after 30000ms: host=db-replica-1.internal:5432\n"
+            f"Traceback (most recent call last):\n"
+            f'  File "/app/{service_name}/db/pool.py", line 47, in acquire_connection\n'
+            f'    raise TimeoutError("Database connection timed out after 30000ms: host=db-replica-1.internal:5432")\n'
+            f"TimeoutError: Database connection timed out after 30000ms: host=db-replica-1.internal:5432"
+        )
+    else:
+        traceback_msg = (
+            f"[{now_iso}] [ERROR] [{service_name}] Simulated Application Failure [RuntimeError]: "
+            f"Unhandled exception encountered in service worker.\n"
+            f"Traceback (most recent call last):\n"
+            f'  File "/app/{service_name}/main.py", line 99, in process_event\n'
+            f'    raise RuntimeError("Unhandled service exception occurred.")\n'
+            f"RuntimeError: Unhandled service exception occurred."
+        )
+
+    return await _process_ingested_log(
+        message=traceback_msg,
+        timestamp=now_iso,
+        service_id_or_name=payload.service,
+    )
+
+
+@app.get("/api/incidents")
+def api_get_incidents(service: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
+    """Retrieves recent incidents from Supabase PostgreSQL with optional service filtering."""
+    return get_incidents(limit=limit, service=service)
+
+
+@app.get("/api/incidents/{incident_id}")
+def api_get_incident_by_id(incident_id: str) -> dict[str, Any]:
+    """Retrieves full incident details including 5-section Markdown RCA and agent traces."""
+    inc = get_incident_by_id(incident_id)
+    if not inc:
+        raise HTTPException(status_code=404, detail="Incident not found.")
+    return inc
+
+
+@app.patch("/api/incidents/{incident_id}")
+def api_update_incident(incident_id: str, payload: IncidentUpdatePayload) -> dict[str, Any]:
+    """Updates incident status or remediation checklists in Supabase."""
+    success = update_incident_status(
+        incident_id=incident_id,
+        status=payload.status,
+        immediate_fixes=payload.immediate_fixes,
+        long_term_prevention=payload.long_term_prevention,
+    )
+    if not success:
+        raise HTTPException(status_code=400, detail="Failed to update incident.")
+    return {"status": "updated", "incident_id": incident_id}
