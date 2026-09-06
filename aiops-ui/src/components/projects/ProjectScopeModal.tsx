@@ -11,6 +11,7 @@ interface ProjectScopeModalProps {
   onClose: () => void;
   project: Project | null;
   onScoped: () => void;
+  savedPat?: string | null;
 }
 
 export const ProjectScopeModal: React.FC<ProjectScopeModalProps> = ({
