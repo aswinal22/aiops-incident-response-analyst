@@ -183,12 +183,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     if (user) {
-      refreshProjectsAndServices().then(() => {
-        // If user has no PAT or no projects yet, open the onboarding wizard automatically
-        if (!githubPat || projects.length === 0) {
-          setIsOnboardingOpen(true);
-        }
-      });
+      refreshProjectsAndServices();
     }
   }, [user]);
 
@@ -243,6 +238,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(userAcc);
       localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userAcc));
       await refreshProjectsAndServices();
+      // Only open onboarding wizard once for newly created user accounts
+      setIsOnboardingOpen(true);
     } catch (err: any) {
       throw new Error(err.message || 'Signup failed.');
     } finally {

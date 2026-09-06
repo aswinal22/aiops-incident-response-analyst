@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { api } from '../../lib/api';
 import { LogEntry } from '../../lib/types';
-import { Terminal, Shield, AlertOctagon, Pause, Play, Trash2, Search, Filter } from 'lucide-react';
+import { Terminal, Shield, AlertOctagon, Pause, Play, Trash2, Search, Filter, Sparkles, RefreshCw } from 'lucide-react';
 
 interface LiveLogViewerProps {
   onSimulateError?: (type: string) => void;
@@ -12,17 +12,18 @@ export const LiveLogViewer: React.FC<LiveLogViewerProps> = () => {
   const [filterQuery, setFilterQuery] = useState('');
   const [selectedService, setSelectedService] = useState('all');
   const [isPaused, setIsPaused] = useState(false);
-  const [autoScroll, setAutoScroll] = useState(true);
-  const terminalEndRef = useRef<HTMLDivElement>(null);
+  const [autoScroll, setAutoScroll] = useState(false); // Default to false so viewport never jumps
+  const [isGenerating, setIsGenerating] = useState(false);
+  const terminalContainerRef = useRef<HTMLDivElement>(null);
 
-  // Poll /buffer every 2 seconds
+  // Poll /buffer every 3 seconds
   useEffect(() => {
     if (isPaused) return;
 
     const fetchLogs = async () => {
       try {
         const res = await api.getBuffer(150);
-        if (res?.logs) {
+        if (res?.logs && res.logs.length > 0) {
           setLogs(res.logs);
         }
       } catch (err) {
@@ -31,16 +32,44 @@ export const LiveLogViewer: React.FC<LiveLogViewerProps> = () => {
     };
 
     fetchLogs();
-    const interval = setInterval(fetchLogs, 2000);
+    const interval = setInterval(fetchLogs, 3000);
     return () => clearInterval(interval);
   }, [isPaused]);
 
-  // Auto-scroll terminal to bottom
+  // Scroll ONLY the internal terminal box, NOT the whole browser window
   useEffect(() => {
-    if (autoScroll && terminalEndRef.current) {
-      terminalEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    if (autoScroll && terminalContainerRef.current) {
+      terminalContainerRef.current.scrollTop = terminalContainerRef.current.scrollHeight;
     }
   }, [logs, autoScroll]);
+
+  // Demo Traffic Generator to demonstrate live streaming
+  const handleGenerateSampleTraffic = async () => {
+    setIsGenerating(true);
+    const sampleEndpoints = [
+      'GET /api/v1/checkout HTTP/1.1 200 OK (24ms)',
+      'POST /api/v1/auth/verify-token HTTP/1.1 200 OK (11ms)',
+      'GET /api/v1/products?category=electronics HTTP/1.1 200 OK (45ms)',
+      'POST /api/v1/orders/create HTTP/1.1 201 Created (68ms)',
+      'INFO: [payment-service] Stripe webhook event evt_3N8291 verified successfully',
+      'INFO: [auth-service] JWT token generated for user alex_sre (claims: sub, exp, role)',
+      'INFO: [inventory-service] Decremented stock count for SKU-98214 (remaining: 42)',
+    ];
+
+    try {
+      for (const msg of sampleEndpoints) {
+        await api.ingestLog(msg, selectedService !== 'all' ? selectedService : 'target-app');
+      }
+      const res = await api.getBuffer(150);
+      if (res?.logs) {
+        setLogs(res.logs);
+      }
+    } catch (err) {
+      console.error('Error generating demo traffic:', err);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   // Filter logs
   const filteredLogs = logs.filter((log) => {
@@ -54,11 +83,10 @@ export const LiveLogViewer: React.FC<LiveLogViewerProps> = () => {
   });
 
   const availableServices = Array.from(new Set(logs.map((l) => l.service).filter(Boolean)));
-
   const containsRedaction = (msg?: string) => msg && msg.includes('[REDACTED_');
 
   return (
-    <div className="flex flex-col h-[calc(100vh-8.5rem)] bg-[#070b14] border border-border rounded-xl overflow-hidden shadow-2xl">
+    <div className="flex flex-col h-[480px] bg-[#070b14] border border-border rounded-2xl overflow-hidden shadow-2xl">
       {/* Terminal Toolbar */}
       <div className="h-12 bg-surface border-b border-border px-4 flex items-center justify-between gap-3 text-xs shrink-0">
         {/* Left: Window Dots & Title */}
@@ -70,7 +98,7 @@ export const LiveLogViewer: React.FC<LiveLogViewerProps> = () => {
           </div>
           <div className="flex items-center gap-1.5 font-mono text-slate-300 font-medium">
             <Terminal className="w-4 h-4 text-accent-blue" />
-            <span>Stdout Log Drain Stream</span>
+            <span>Stdout Log Drain Stream ({filteredLogs.length})</span>
           </div>
         </div>
 
@@ -80,7 +108,7 @@ export const LiveLogViewer: React.FC<LiveLogViewerProps> = () => {
             <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Search stream / traceback / PII tokens..."
+              placeholder="Filter stream / traceback..."
               value={filterQuery}
               onChange={(e) => setFilterQuery(e.target.value)}
               className="w-full bg-[#0a0f1d] border border-slate-800 rounded-md pl-8 pr-3 py-1 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-accent-blue/50"
@@ -104,8 +132,18 @@ export const LiveLogViewer: React.FC<LiveLogViewerProps> = () => {
           </div>
         </div>
 
-        {/* Right: Controls */}
+        {/* Right: Controls & Traffic Generator */}
         <div className="flex items-center gap-2">
+          <button
+            onClick={handleGenerateSampleTraffic}
+            disabled={isGenerating}
+            title="Emit realistic sample microservice stdout traffic"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-accent-blue/15 hover:bg-accent-blue/25 text-blue-300 border border-accent-blue/30 text-xs font-mono font-medium transition-all"
+          >
+            <Sparkles className={`w-3.5 h-3.5 ${isGenerating ? 'animate-spin' : ''}`} />
+            <span>{isGenerating ? 'Streaming...' : 'Generate Traffic'}</span>
+          </button>
+
           <button
             onClick={() => setIsPaused(!isPaused)}
             className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-all ${
@@ -115,7 +153,7 @@ export const LiveLogViewer: React.FC<LiveLogViewerProps> = () => {
             }`}
           >
             {isPaused ? <Play className="w-3.5 h-3.5" /> : <Pause className="w-3.5 h-3.5" />}
-            {isPaused ? 'Resume' : 'Pause'}
+            <span>{isPaused ? 'Resume' : 'Pause'}</span>
           </button>
 
           <button
@@ -139,15 +177,27 @@ export const LiveLogViewer: React.FC<LiveLogViewerProps> = () => {
         </div>
       </div>
 
-      {/* Terminal Content Body */}
-      <div className="flex-1 overflow-y-auto p-4 font-mono text-xs space-y-1 bg-[#060a12]">
+      {/* Terminal Content Body (Bounded height with isolated internal scrolling) */}
+      <div
+        ref={terminalContainerRef}
+        className="flex-1 overflow-y-auto p-4 font-mono text-xs space-y-1.5 bg-[#060a12]"
+      >
         {filteredLogs.length === 0 ? (
-          <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-2">
-            <Terminal className="w-8 h-8 opacity-30 animate-pulse" />
-            <p>Waiting for microservice stdout logs...</p>
-            <p className="text-[11px] text-slate-600">
-              Logs drained via <code className="text-blue-400">POST /ingest-logs</code> will appear here in real time.
-            </p>
+          <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-3 py-12">
+            <Terminal className="w-10 h-10 opacity-30 animate-pulse text-accent-blue" />
+            <div className="text-center space-y-1">
+              <p className="text-slate-300 font-medium">Waiting for microservice stdout logs...</p>
+              <p className="text-[11px] text-slate-500 max-w-sm">
+                Logs drained via <code className="text-blue-400">POST /ingest-logs/:service_id</code> appear here in real time.
+              </p>
+            </div>
+            <button
+              onClick={handleGenerateSampleTraffic}
+              className="px-3.5 py-1.5 rounded-lg bg-surface-elevated hover:bg-surface-hover border border-border text-xs text-slate-300 flex items-center gap-1.5 font-medium transition-colors"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-accent-blue" />
+              <span>Emit Sample Traffic Now</span>
+            </button>
           </div>
         ) : (
           filteredLogs.map((log, index) => {
@@ -163,17 +213,17 @@ export const LiveLogViewer: React.FC<LiveLogViewerProps> = () => {
             return (
               <div
                 key={index}
-                className={`p-2 rounded border transition-all flex flex-col gap-1 ${
+                className={`p-2 rounded-lg border transition-all flex flex-col gap-1 ${
                   isAnomaly
-                    ? 'bg-rose-950/20 border-rose-800/40 text-rose-200 glow-rose'
+                    ? 'bg-rose-950/30 border-rose-800/40 text-rose-200 glow-rose'
                     : 'bg-slate-900/30 border-transparent hover:border-slate-800/60 text-slate-300'
                 }`}
               >
                 {/* Meta Header */}
                 <div className="flex items-center justify-between text-[10px] text-slate-400 select-none pb-0.5">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-slate-500">{log.timestamp || new Date().toISOString()}</span>
-                    <span className="px-1.5 py-0.2 rounded bg-slate-800 text-blue-300 font-semibold">
+                    <span className="px-1.5 py-0.2 rounded bg-slate-800 text-blue-300 font-semibold font-mono">
                       {log.service || 'target-app'}
                     </span>
                     {isAnomaly && (
@@ -199,9 +249,7 @@ export const LiveLogViewer: React.FC<LiveLogViewerProps> = () => {
             );
           })
         )}
-        <div ref={terminalEndRef} />
       </div>
     </div>
   );
 };
-
