@@ -1,12 +1,11 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { Terminal, Folder, AlertOctagon, Shield, Activity, Settings, ExternalLink } from 'lucide-react';
+import { Terminal, Folder, AlertOctagon, Activity, Settings, ExternalLink } from 'lucide-react';
 
 const navItems = [
   { to: '/', label: 'Live Stream Console', icon: Terminal },
   { to: '/projects', label: 'Projects & Repos', icon: Folder },
   { to: '/incidents', label: 'Incident RCA Studio', icon: AlertOctagon },
-  { to: '/security', label: '5-Layer Security', icon: Shield },
   { to: '/benchmarks', label: 'Evals & Benchmarks', icon: Activity },
   { to: '/settings', label: 'Settings & PAT', icon: Settings },
 ];

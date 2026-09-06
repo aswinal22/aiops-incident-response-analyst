@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { PATDisclaimerBanner } from '../components/security/PATDisclaimerBanner';
 import { validateGitHubPat } from '../lib/github';
-import { Key, ShieldCheck, CheckCircle2, AlertCircle, RefreshCw, Lock, Database } from 'lucide-react';
+import { Key, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 
 export const SettingsPage: React.FC = () => {
   const { githubPat, patStatus, saveGitHubPat } = useAuth();
@@ -41,7 +41,7 @@ export const SettingsPage: React.FC = () => {
           <span>Security & Integration Settings</span>
         </h1>
         <p className="text-xs text-slate-400 mt-0.5">
-          Manage GitHub Personal Access Tokens (PAT), audit service accounts, and verify 5-layer platform guardrails.
+          Manage GitHub Personal Access Tokens (PAT) and configure microservice integrations.
         </p>
       </div>
 
@@ -122,31 +122,6 @@ export const SettingsPage: React.FC = () => {
             </button>
           </div>
         </form>
-      </div>
-
-      {/* Security Guardrails Architecture Summary */}
-      <div className="bg-surface border border-border rounded-2xl p-6 shadow-xl space-y-4">
-        <h2 className="text-sm font-bold text-slate-100 font-mono flex items-center gap-2">
-          <ShieldCheck className="w-4 h-4 text-emerald-400" />
-          <span>Active 5-Layer Security & Sandbox Controls</span>
-        </h2>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs font-mono">
-          <div className="bg-[#090d16] border border-slate-800 p-3 rounded-xl space-y-1">
-            <div className="text-accent-blue font-semibold">Layer 1: Ingress Limiter</div>
-            <div className="text-slate-400 text-[11px]">SlowAPI 50 req/min rate limit per IP</div>
-          </div>
-
-          <div className="bg-[#090d16] border border-slate-800 p-3 rounded-xl space-y-1">
-            <div className="text-purple-400 font-semibold">Layer 2: PII Redactor</div>
-            <div className="text-slate-400 text-[11px]">Regex scrubbing for AWS, JWT, API keys</div>
-          </div>
-
-          <div className="bg-[#090d16] border border-slate-800 p-3 rounded-xl space-y-1">
-            <div className="text-emerald-400 font-semibold">Layer 3: AST SQL Guard</div>
-            <div className="text-slate-400 text-[11px]">sqlparse SELECT-only AST validator</div>
-          </div>
-        </div>
       </div>
     </div>
   );

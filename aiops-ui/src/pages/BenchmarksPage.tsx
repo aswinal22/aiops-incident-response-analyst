@@ -1,11 +1,10 @@
 import React from 'react';
-import { BenchmarkScorecards } from '../components/evals/BenchmarkScorecards';
+import { InteractiveBenchmarkInspector } from '../components/evals/InteractiveBenchmarkInspector';
 
 export const BenchmarksPage: React.FC = () => {
   return (
     <div className="space-y-6">
-      <BenchmarkScorecards />
+      <InteractiveBenchmarkInspector />
     </div>
   );
 };
-

@@ -1,6 +1,22 @@
 {
   "rewrites": [
     {
+      "source": "/health",
+      "destination": "https://aiops-incident-response-analyst.onrender.com/health"
+    },
+    {
+      "source": "/buffer",
+      "destination": "https://aiops-incident-response-analyst.onrender.com/buffer"
+    },
+    {
+      "source": "/api/:match*",
+      "destination": "https://aiops-incident-response-analyst.onrender.com/api/:match*"
+    },
+    {
+      "source": "/ingest-logs/:match*",
+      "destination": "https://aiops-incident-response-analyst.onrender.com/ingest-logs/:match*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

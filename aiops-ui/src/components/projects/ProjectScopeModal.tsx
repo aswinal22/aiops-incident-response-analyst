@@ -1,16 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
+import { useAuth } from '../../context/AuthContext';
 import { api } from '../../lib/api';
 import { fetchUserRepositories } from '../../lib/github';
 import { GitHubRepo, Project } from '../../lib/types';
 import { PATDisclaimerBanner } from '../security/PATDisclaimerBanner';
-import { GitBranch, X, Search, CheckCircle2, Key, AlertCircle, ArrowRight, Server } from 'lucide-react';
+import { GitBranch, X, Search, CheckCircle2, Key, AlertCircle, ArrowRight, RefreshCw, Lock, Sparkles } from 'lucide-react';
 
 interface ProjectScopeModalProps {
   isOpen: boolean;
   onClose: () => void;
   project: Project | null;
   onScoped: () => void;
-  savedPat?: string | null;
 }
 
 export const ProjectScopeModal: React.FC<ProjectScopeModalProps> = ({
@@ -18,9 +18,10 @@ export const ProjectScopeModal: React.FC<ProjectScopeModalProps> = ({
   onClose,
   project,
   onScoped,
-  savedPat,
 }) => {
-  const [pat, setPat] = useState(savedPat || '');
+  const { githubPat, patStatus, saveGitHubPat } = useAuth();
+
+  const [patInput, setPatInput] = useState(githubPat || '');
   const [repos, setRepos] = useState<GitHubRepo[]>([]);
   const [selectedRepo, setSelectedRepo] = useState<GitHubRepo | null>(null);
   const [serviceName, setServiceName] = useState('');
@@ -29,7 +30,9 @@ export const ProjectScopeModal: React.FC<ProjectScopeModalProps> = ({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const loadRepos = React.useCallback(async (tokenToUse: string) => {
+  const activePat = githubPat || patInput;
+
+  const loadRepos = useCallback(async (tokenToUse: string) => {
     if (!tokenToUse.trim()) return;
     setLoadingRepos(true);
     setError(null);
@@ -43,14 +46,25 @@ export const ProjectScopeModal: React.FC<ProjectScopeModalProps> = ({
     }
   }, []);
 
+  // Auto-fetch repositories when modal opens if PAT is already connected
   useEffect(() => {
-    if (savedPat) {
-      setPat(savedPat);
-      loadRepos(savedPat);
+    if (isOpen && activePat) {
+      loadRepos(activePat);
     }
-  }, [savedPat, isOpen, loadRepos]);
+  }, [isOpen, activePat, loadRepos]);
 
   if (!isOpen || !project) return null;
+
+  const handleConnectNewPat = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!patInput.trim()) return;
+    try {
+      await saveGitHubPat(patInput.trim());
+      await loadRepos(patInput.trim());
+    } catch (err: any) {
+      setError(err.message || 'Invalid PAT token');
+    }
+  };
 
   const handleSelectRepo = (repo: GitHubRepo) => {
     setSelectedRepo(repo);
@@ -78,7 +92,7 @@ export const ProjectScopeModal: React.FC<ProjectScopeModalProps> = ({
         repo_url: selectedRepo.html_url,
         repo_owner: selectedRepo.owner.login,
         repo_name: selectedRepo.name,
-        github_pat: pat.trim() || undefined,
+        github_pat: activePat.trim() || undefined,
       });
 
       onScoped();
@@ -90,9 +104,10 @@ export const ProjectScopeModal: React.FC<ProjectScopeModalProps> = ({
     }
   };
 
-  const filteredRepos = repos.filter((r) =>
-    r.name.toLowerCase().includes(search.toLowerCase()) ||
-    (r.description && r.description.toLowerCase().includes(search.toLowerCase()))
+  const filteredRepos = repos.filter(
+    (r) =>
+      r.name.toLowerCase().includes(search.toLowerCase()) ||
+      (r.description && r.description.toLowerCase().includes(search.toLowerCase()))
   );
 
   return (
@@ -109,7 +124,7 @@ export const ProjectScopeModal: React.FC<ProjectScopeModalProps> = ({
                 Scope Microservice Repository into <span className="text-accent-blue">{project.name}</span>
               </h3>
               <p className="text-xs text-slate-400">
-                Connect a GitHub repository to generate a dedicated 24/7 log drain webhook
+                Select a repository to link and generate its dedicated 24/7 log drain webhook
               </p>
             </div>
           </div>
@@ -128,36 +143,63 @@ export const ProjectScopeModal: React.FC<ProjectScopeModalProps> = ({
           </div>
         )}
 
-        {/* GitHub PAT Input */}
-        <div className="space-y-1.5">
-          <label className="text-xs font-medium text-slate-300 flex items-center justify-between">
-            <span className="flex items-center gap-1.5">
-              <Key className="w-3.5 h-3.5 text-amber-400" />
-              <span>GitHub Personal Access Token (Read-Only) *</span>
-            </span>
-            <span className="text-[11px] text-slate-500 font-mono">Encrypted with Fernet AES-128</span>
-          </label>
-          <div className="flex gap-2">
-            <input
-              type="password"
-              placeholder="ghp_************************************"
-              value={pat}
-              onChange={(e) => setPat(e.target.value)}
-              className="flex-1 bg-[#0a0f1d] border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-accent-blue font-mono"
-            />
+        {/* PAT Connection Status or Input */}
+        {activePat ? (
+          /* PAT is already connected in Settings / AuthContext -> Seamless auto-connected badge */
+          <div className="p-3 rounded-xl bg-[#090d16] border border-slate-800 flex items-center justify-between text-xs font-mono">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <div>
+                <span className="text-slate-200 font-semibold">Using Connected GitHub Token</span>
+                <span className="text-[11px] text-slate-500 block">Fernet AES-128 Encrypted at Rest</span>
+              </div>
+            </div>
             <button
               type="button"
-              onClick={() => loadRepos(pat)}
-              disabled={loadingRepos || !pat.trim()}
-              className="px-3 py-1.5 rounded-lg bg-surface-elevated hover:bg-surface-hover border border-border text-xs font-medium text-slate-200 disabled:opacity-50"
+              onClick={() => loadRepos(activePat)}
+              disabled={loadingRepos}
+              className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] flex items-center gap-1.5 transition-colors"
             >
-              {loadingRepos ? 'Loading...' : 'Fetch Repos'}
+              <RefreshCw className={`w-3 h-3 ${loadingRepos ? 'animate-spin' : ''}`} />
+              <span>{loadingRepos ? 'Syncing...' : 'Re-sync Repos'}</span>
             </button>
           </div>
-        </div>
+        ) : (
+          /* First-time PAT input if not configured in Settings */
+          <form onSubmit={handleConnectNewPat} className="space-y-1.5 p-3 rounded-xl bg-[#090d16] border border-slate-800">
+            <label className="text-xs font-medium text-slate-300 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Key className="w-3.5 h-3.5 text-amber-400" />
+                <span>Connect GitHub Personal Access Token (Read-Only)</span>
+              </span>
+              <span className="text-[11px] text-slate-500 font-mono">1-Time Setup</span>
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="password"
+                placeholder="ghp_************************************"
+                value={patInput}
+                onChange={(e) => setPatInput(e.target.value)}
+                className="flex-1 bg-[#0a0f1d] border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-accent-blue font-mono"
+              />
+              <button
+                type="submit"
+                disabled={loadingRepos || !patInput.trim()}
+                className="px-3 py-1.5 rounded-lg bg-accent-blue hover:bg-blue-600 text-white text-xs font-semibold glow-blue disabled:opacity-50"
+              >
+                {loadingRepos ? 'Connecting...' : 'Connect'}
+              </button>
+            </div>
+          </form>
+        )}
 
         {/* Repository Picker */}
-        {repos.length > 0 && (
+        {loadingRepos ? (
+          <div className="p-8 text-center bg-[#090d16] border border-slate-800 rounded-xl space-y-2">
+            <RefreshCw className="w-5 h-5 animate-spin text-accent-blue mx-auto" />
+            <span className="text-xs font-mono text-slate-400 block">Fetching repositories from GitHub...</span>
+          </div>
+        ) : repos.length > 0 ? (
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-xs font-medium text-slate-300">Select Repository to Scope:</label>
@@ -171,7 +213,7 @@ export const ProjectScopeModal: React.FC<ProjectScopeModalProps> = ({
                 placeholder="Filter repositories..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full bg-[#0a0f1d] border border-slate-800 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-accent-blue"
+                className="w-full bg-[#0a0f1d] border border-slate-800 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-accent-blue font-mono"
               />
             </div>
 
@@ -212,23 +254,38 @@ export const ProjectScopeModal: React.FC<ProjectScopeModalProps> = ({
               })}
             </div>
           </div>
-        )}
+        ) : activePat && !loadingRepos ? (
+          <div className="p-6 text-center bg-[#090d16] border border-slate-800 rounded-xl text-slate-400 text-xs space-y-1">
+            <p>No repositories found for this token.</p>
+            <p className="text-[11px] text-slate-500">Please ensure the token has <code>repo</code> or <code>Contents: Read</code> access.</p>
+          </div>
+        ) : null}
 
-        {/* Selected Repo Configuration */}
+        {/* Selected Repo Configuration & 1-Click Submission */}
         {selectedRepo && (
-          <form onSubmit={handleSubmit} className="space-y-3 pt-2 border-t border-border">
+          <form onSubmit={handleSubmit} className="space-y-3 pt-2 border-t border-border animate-in fade-in">
+            <div className="p-3 bg-accent-blue/10 border border-accent-blue/20 rounded-xl flex items-center justify-between text-xs font-mono">
+              <div>
+                <span className="text-slate-400 text-[10px] block">Selected GitHub Repository:</span>
+                <span className="text-accent-blue font-bold">{selectedRepo.full_name}</span>
+              </div>
+              <span className="text-[11px] text-purple-300">branch: {selectedRepo.default_branch}</span>
+            </div>
+
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1">Microservice Name *</label>
+              <label className="block text-xs font-medium text-slate-300 mb-1">
+                Microservice Identifier / Name *
+              </label>
               <input
                 type="text"
                 required
                 value={serviceName}
                 onChange={(e) => setServiceName(e.target.value)}
-                placeholder="e.g. auth-service"
-                className="w-full bg-[#0a0f1d] border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-accent-blue font-mono"
+                placeholder="e.g. payment-service"
+                className="w-full bg-[#0a0f1d] border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-accent-blue font-mono"
               />
               <p className="text-[11px] text-slate-500 mt-1 font-mono">
-                Log drain URL will be: <code>/ingest-logs/{serviceName || 'service-name'}</code>
+                Generates webhook endpoint: <code className="text-slate-400">/ingest-logs/{serviceName || 'service-name'}</code>
               </p>
             </div>
 
@@ -236,17 +293,16 @@ export const ProjectScopeModal: React.FC<ProjectScopeModalProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-3 py-2 rounded-lg bg-surface-elevated hover:bg-surface-hover text-slate-300 text-xs font-medium border border-border"
+                className="px-3 py-1.5 rounded-lg bg-surface-elevated hover:bg-surface-hover border border-border text-xs text-slate-300 font-medium"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                disabled={submitting}
-                className="px-4 py-2 rounded-lg bg-accent-blue hover:bg-blue-600 text-white text-xs font-semibold glow-blue disabled:opacity-50 flex items-center gap-1.5"
+                disabled={submitting || !serviceName.trim()}
+                className="px-4 py-1.5 rounded-lg bg-accent-blue hover:bg-blue-600 text-white text-xs font-semibold glow-blue disabled:opacity-50 flex items-center gap-1.5"
               >
-                <Server className="w-3.5 h-3.5" />
-                <span>{submitting ? 'Connecting...' : 'Scope Service & Generate Webhook'}</span>
+                {submitting ? 'Scoping...' : `Scope into ${project.name}`}
               </button>
             </div>
           </form>

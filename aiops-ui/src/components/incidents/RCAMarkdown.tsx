@@ -5,12 +5,14 @@ import { Copy, Check, FileText } from 'lucide-react';
 
 interface RCAMarkdownProps {
   content?: string;
+  markdown?: string;
 }
 
-export const RCAMarkdown: React.FC<RCAMarkdownProps> = ({ content }) => {
+export const RCAMarkdown: React.FC<RCAMarkdownProps> = ({ content, markdown }) => {
+  const textContent = content || markdown || '';
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
-  if (!content) {
+  if (!textContent) {
     return (
       <div className="p-8 text-center text-slate-500">
         <FileText className="w-8 h-8 mx-auto mb-2 opacity-30" />
@@ -100,7 +102,7 @@ export const RCAMarkdown: React.FC<RCAMarkdownProps> = ({ content }) => {
           },
         }}
       >
-        {content}
+        {textContent}
       </ReactMarkdown>
     </div>
   );

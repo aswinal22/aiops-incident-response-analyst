@@ -9,7 +9,6 @@ import { StreamConsolePage } from './pages/StreamConsolePage';
 import { ProjectsPage } from './pages/ProjectsPage';
 import { IncidentsPage } from './pages/IncidentsPage';
 import { IncidentDetailPage } from './pages/IncidentDetailPage';
-import { SecurityPage } from './pages/SecurityPage';
 import { BenchmarksPage } from './pages/BenchmarksPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { OnboardingWizardModal } from './components/onboarding/OnboardingWizardModal';
@@ -49,7 +48,6 @@ export function App() {
             <Route path="/projects" element={<ProjectsPage />} />
             <Route path="/incidents" element={<IncidentsPage />} />
             <Route path="/incidents/:id" element={<IncidentDetailPage />} />
-            <Route path="/security" element={<SecurityPage />} />
             <Route path="/benchmarks" element={<BenchmarksPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
