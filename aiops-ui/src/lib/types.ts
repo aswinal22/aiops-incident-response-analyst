@@ -21,6 +21,7 @@ export interface GitHubRepo {
   default_branch: string;
   language: string | null;
   updated_at: string;
+  private?: boolean;
 }
 
 export interface Service {

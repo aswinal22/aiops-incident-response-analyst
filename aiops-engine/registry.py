@@ -62,34 +62,6 @@ def init_registry_db() -> None:
                     )
                 )
 
-                # 3. Seed Default Monorepo Project & target-app
-                conn.execute(
-                    text(
-                        """
-                        INSERT INTO projects (id, name, description)
-                        VALUES ('00000000-0000-0000-0000-000000000001', 'Default Monorepo Project', 'Monorepo workspace containing target-app')
-                        ON CONFLICT (id) DO NOTHING;
-                        """
-                    )
-                )
-                conn.execute(
-                    text(
-                        """
-                        INSERT INTO services (id, project_id, name, repo_url, repo_owner, repo_name, github_pat_encrypted, workspace_path)
-                        VALUES (
-                            '00000000-0000-0000-0000-000000000002',
-                            '00000000-0000-0000-0000-000000000001',
-                            'target-app',
-                            '',
-                            '',
-                            '',
-                            NULL,
-                            'target-app'
-                        )
-                        ON CONFLICT (name) DO NOTHING;
-                        """
-                    )
-                )
             print("[Service Registry] Supabase PostgreSQL mapping tables verified & active.")
             return
         except Exception as e:
@@ -123,22 +95,6 @@ def init_registry_db() -> None:
             );
             """
         )
-        cursor.execute("SELECT id FROM projects WHERE id = '00000000-0000-0000-0000-000000000001'")
-        if not cursor.fetchone():
-            cursor.execute(
-                """
-                INSERT INTO projects (id, name, description)
-                VALUES ('00000000-0000-0000-0000-000000000001', 'Default Monorepo Project', 'Monorepo workspace containing target-app');
-                """
-            )
-        cursor.execute("SELECT id FROM services WHERE name = 'target-app'")
-        if not cursor.fetchone():
-            cursor.execute(
-                """
-                INSERT INTO services (id, project_id, name, repo_url, repo_owner, repo_name, github_pat_encrypted, workspace_path)
-                VALUES ('00000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000001', 'target-app', '', '', '', NULL, 'target-app');
-                """
-            )
         conn.commit()
 
 
@@ -417,6 +373,51 @@ def list_projects() -> list[dict[str, Any]]:
         cursor = conn.cursor()
         cursor.execute("SELECT id, name, description, created_at FROM projects")
         return [dict(row) for row in cursor.fetchall()]
+
+
+def delete_project(project_id: str) -> bool:
+    """Deletes a project and cascades to all its scoped services."""
+    engine = get_db_engine()
+    if engine is not None:
+        try:
+            with engine.begin() as conn:
+                conn.execute(
+                    text("DELETE FROM projects WHERE id = CAST(:id AS UUID) OR id::text = :id_text;"),
+                    {"id": project_id, "id_text": project_id},
+                )
+            _SERVICE_CACHE.clear()
+            return True
+        except Exception as e:
+            print(f"[Service Registry] Supabase delete_project error: {e}")
+
+    with _get_sqlite_connection() as conn:
+        conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+        conn.execute("DELETE FROM services WHERE project_id = ?", (project_id,))
+        conn.commit()
+    _SERVICE_CACHE.clear()
+    return True
+
+
+def delete_service(service_id: str) -> bool:
+    """Deletes a microservice by ID or name."""
+    engine = get_db_engine()
+    if engine is not None:
+        try:
+            with engine.begin() as conn:
+                conn.execute(
+                    text("DELETE FROM services WHERE id = CAST(:id AS UUID) OR id::text = :id_text OR name = :name;"),
+                    {"id": service_id, "id_text": service_id, "name": service_id},
+                )
+            _SERVICE_CACHE.clear()
+            return True
+        except Exception as e:
+            print(f"[Service Registry] Supabase delete_service error: {e}")
+
+    with _get_sqlite_connection() as conn:
+        conn.execute("DELETE FROM services WHERE id = ? OR name = ?", (service_id, service_id))
+        conn.commit()
+    _SERVICE_CACHE.clear()
+    return True
 
 
 # Auto-initialize schema on startup

@@ -15,6 +15,7 @@ from utils.security import sanitize_text
 
 def test_layer1_rate_limiting() -> None:
     print("\n[Layer 1 Test] Verifying Ingress Rate Limiting (50 req/min)...")
+    limiter.reset()
     with TestClient(app) as client:
         # Send 50 requests (should succeed)
         for i in range(50):

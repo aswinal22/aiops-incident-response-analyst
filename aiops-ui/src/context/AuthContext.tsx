@@ -21,6 +21,9 @@ interface AuthContextType {
   saveGitHubPat: (pat: string) => Promise<void>;
   setActiveProject: (project: Project | null) => void;
   setActiveService: (service: Service | null) => void;
+  isOnboardingOpen: boolean;
+  openOnboarding: () => void;
+  closeOnboarding: () => void;
   refreshProjectsAndServices: () => Promise<void>;
 }
 
@@ -57,8 +60,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [activeService, setActiveServiceState] = useState<Service | null>(() => getSafeItem<Service>(STORAGE_KEYS.ACTIVE_SERVICE));
   const [isLoading, setIsLoading] = useState(true);
   const [sessionToast, setSessionToast] = useState<SessionToastData | null>(null);
+  const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
 
   const dismissToast = () => setSessionToast(null);
+  const openOnboarding = () => setIsOnboardingOpen(true);
+  const closeOnboarding = () => setIsOnboardingOpen(false);
 
   // Validate PAT status on change
   useEffect(() => {
@@ -85,30 +91,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         services: (svcList || []).filter((s) => s.project_id === proj.id),
       }));
 
-      // If no projects exist in database yet, create default "Core Production Services"
-      if (combinedProjects.length === 0) {
-        const defaultProj: Project = {
-          id: 'default-project',
-          name: 'Core Production Services',
-          description: 'Default project workspace for microservice observability',
-          created_at: new Date().toISOString(),
-          services: (svcList || []).map((s) => ({
-            ...s,
-            log_drain_url: `/ingest-logs/${s.id || s.name}`,
-          })),
-        };
-        combinedProjects.push(defaultProj);
-      }
-
       setProjects(combinedProjects);
 
-      // Set active project if none selected
-      if (!activeProject && combinedProjects.length > 0) {
-        const first = combinedProjects[0];
-        setActiveProject(first);
-        if (first.services && first.services.length > 0) {
-          setActiveService(first.services[0]);
+      // Set active project if none selected or if activeProject no longer exists
+      if (combinedProjects.length > 0) {
+        if (!activeProject || !combinedProjects.some((p) => p.id === activeProject.id)) {
+          const first = combinedProjects[0];
+          setActiveProject(first);
+          if (first.services && first.services.length > 0) {
+            setActiveService(first.services[0]);
+          } else {
+            setActiveService(null);
+          }
         }
+      } else {
+        setActiveProject(null);
+        setActiveService(null);
       }
     } catch (err) {
       console.error('Error fetching projects & services:', err);
@@ -185,7 +183,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     if (user) {
-      refreshProjectsAndServices();
+      refreshProjectsAndServices().then(() => {
+        // If user has no PAT or no projects yet, open the onboarding wizard automatically
+        if (!githubPat || projects.length === 0) {
+          setIsOnboardingOpen(true);
+        }
+      });
     }
   }, [user]);
 
@@ -345,6 +348,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         saveGitHubPat,
         setActiveProject,
         setActiveService,
+        isOnboardingOpen,
+        openOnboarding,
+        closeOnboarding,
         refreshProjectsAndServices,
       }}
     >

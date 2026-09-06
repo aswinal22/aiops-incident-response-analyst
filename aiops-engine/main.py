@@ -38,6 +38,8 @@ from db import (
     verify_user_token,
 )
 from registry import (
+    delete_project,
+    delete_service,
     get_service,
     list_projects,
     list_services,
@@ -262,6 +264,24 @@ def api_create_service(payload: ServiceCreatePayload) -> dict[str, str]:
 def api_list_services(project_id: str | None = None) -> list[dict[str, Any]]:
     """Lists registered microservices (PAT tokens safely masked)."""
     return list_services(project_id)
+
+
+@app.delete("/api/projects/{project_id}")
+def api_delete_project(project_id: str) -> dict[str, str]:
+    """Deletes a project and its scoped services."""
+    success = delete_project(project_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Project not found or could not be deleted.")
+    return {"status": "deleted", "project_id": project_id}
+
+
+@app.delete("/api/services/{service_id}")
+def api_delete_service(service_id: str) -> dict[str, str]:
+    """Deletes a microservice by ID or name."""
+    success = delete_service(service_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Service not found or could not be deleted.")
+    return {"status": "deleted", "service_id": service_id}
 
 
 # =========================================================================

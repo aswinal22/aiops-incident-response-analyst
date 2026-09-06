@@ -12,6 +12,7 @@ import { IncidentDetailPage } from './pages/IncidentDetailPage';
 import { SecurityPage } from './pages/SecurityPage';
 import { BenchmarksPage } from './pages/BenchmarksPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { OnboardingWizardModal } from './components/onboarding/OnboardingWizardModal';
 
 const WorkspaceLayout: React.FC = () => {
   return (
@@ -23,6 +24,7 @@ const WorkspaceLayout: React.FC = () => {
           <Outlet />
         </main>
       </div>
+      <OnboardingWizardModal />
     </div>
   );
 };

@@ -6,7 +6,7 @@ import { HealthStatus } from '../../lib/types';
 import { Zap, Folder, Server, LogOut, ChevronDown, CheckCircle2, AlertTriangle, Key } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
-  const { user, activeProject, activeService, projects, setActiveProject, setActiveService, patStatus, logout } = useAuth();
+  const { user, activeProject, activeService, projects, setActiveProject, setActiveService, patStatus, logout, openOnboarding } = useAuth();
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
@@ -67,41 +67,71 @@ export const Navbar: React.FC = () => {
                 Select Project & Service:
               </div>
               <div className="max-h-60 overflow-y-auto space-y-1">
-                {projects.map((p) => (
-                  <div key={p.id} className="space-y-1">
-                    <div className="text-[11px] font-mono font-bold text-slate-300 px-2 py-1 bg-slate-900/50 rounded flex items-center gap-1.5">
-                      <Folder className="w-3 h-3 text-accent-blue" />
-                      <span>{p.name}</span>
-                    </div>
-                    {(p.services || []).map((s) => (
-                      <button
-                        key={s.id}
-                        onClick={() => {
-                          setActiveProject(p);
-                          setActiveService(s);
-                          setIsDropdownOpen(false);
-                        }}
-                        className={`w-full text-left pl-6 pr-2 py-1.5 rounded text-xs font-mono flex items-center justify-between transition-colors ${
-                          activeService?.id === s.id
-                            ? 'bg-accent-blue/15 text-accent-blue font-semibold'
-                            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-                        }`}
-                      >
-                        <span className="truncate">{s.name}</span>
-                        {activeService?.id === s.id && <CheckCircle2 className="w-3 h-3 text-accent-blue" />}
-                      </button>
-                    ))}
+                {projects.length === 0 ? (
+                  <div className="p-3 text-center space-y-2">
+                    <p className="text-xs text-slate-400">No projects configured yet.</p>
+                    <button
+                      onClick={() => {
+                        setIsDropdownOpen(false);
+                        openOnboarding();
+                      }}
+                      className="w-full py-1.5 px-3 rounded-lg bg-accent-blue hover:bg-blue-600 text-white text-xs font-medium glow-blue"
+                    >
+                      + Setup Project & PAT
+                    </button>
                   </div>
-                ))}
+                ) : (
+                  projects.map((p) => (
+                    <div key={p.id} className="space-y-1">
+                      <div className="text-[11px] font-mono font-bold text-slate-300 px-2 py-1 bg-slate-900/50 rounded flex items-center gap-1.5">
+                        <Folder className="w-3 h-3 text-accent-blue" />
+                        <span>{p.name}</span>
+                      </div>
+                      {(p.services || []).length === 0 ? (
+                        <div className="pl-6 pr-2 py-1 text-[11px] text-slate-500 font-mono">
+                          No services scoped
+                        </div>
+                      ) : (
+                        (p.services || []).map((s) => (
+                          <button
+                            key={s.id}
+                            onClick={() => {
+                              setActiveProject(p);
+                              setActiveService(s);
+                              setIsDropdownOpen(false);
+                            }}
+                            className={`w-full text-left pl-6 pr-2 py-1.5 rounded text-xs font-mono flex items-center justify-between transition-colors ${
+                              activeService?.id === s.id
+                                ? 'bg-accent-blue/15 text-accent-blue font-semibold'
+                                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                            }`}
+                          >
+                            <span className="truncate">{s.name}</span>
+                            {activeService?.id === s.id && <CheckCircle2 className="w-3 h-3 text-accent-blue" />}
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  ))
+                )}
               </div>
-              <div className="pt-2 border-t border-border">
+              <div className="pt-2 border-t border-border flex items-center justify-between px-1">
                 <Link
                   to="/projects"
                   onClick={() => setIsDropdownOpen(false)}
-                  className="block text-center text-xs text-accent-blue hover:underline py-1"
+                  className="text-xs text-accent-blue hover:underline py-1"
                 >
-                  Manage Projects & Scopes →
+                  Manage Projects →
                 </Link>
+                <button
+                  onClick={() => {
+                    setIsDropdownOpen(false);
+                    openOnboarding();
+                  }}
+                  className="text-xs text-slate-400 hover:text-slate-200 py-1"
+                >
+                  + Add Project
+                </button>
               </div>
             </div>
           )}

@@ -80,6 +80,16 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
+  deleteProject: (projectId: string) =>
+    fetchApi<{ status: string; project_id: string }>(`/api/projects/${projectId}`, {
+      method: 'DELETE',
+    }),
+
+  deleteService: (serviceId: string) =>
+    fetchApi<{ status: string; service_id: string }>(`/api/services/${serviceId}`, {
+      method: 'DELETE',
+    }),
+
   getServices: (projectId?: string) => {
     const query = projectId ? `?project_id=${encodeURIComponent(projectId)}` : '';
     return fetchApi<Service[]>(`/api/services${query}`);

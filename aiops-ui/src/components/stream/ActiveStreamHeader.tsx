@@ -4,14 +4,14 @@ import { useAuth } from '../../context/AuthContext';
 import { Folder, GitBranch, Server, Copy, Check, ExternalLink, Activity } from 'lucide-react';
 
 export const ActiveStreamHeader: React.FC = () => {
-  const { activeProject, activeService } = useAuth();
+  const { activeProject, activeService, openOnboarding } = useAuth();
   const [copied, setCopied] = useState(false);
 
   if (!activeProject || !activeService) {
     return (
-      <div className="bg-surface border border-border rounded-xl p-4 flex items-center justify-between shadow-lg">
+      <div className="bg-surface border border-border rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+          <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 shrink-0">
             <Folder className="w-4 h-4" />
           </div>
           <div>
@@ -19,12 +19,20 @@ export const ActiveStreamHeader: React.FC = () => {
             <p className="text-[11px] text-slate-400">Select a project and scoped microservice to start live monitoring</p>
           </div>
         </div>
-        <Link
-          to="/projects"
-          className="px-3 py-1.5 rounded-lg bg-accent-blue hover:bg-blue-600 text-white text-xs font-semibold glow-blue"
-        >
-          Select or Create Project
-        </Link>
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <button
+            onClick={openOnboarding}
+            className="flex-1 sm:flex-none px-3 py-1.5 rounded-lg bg-accent-blue hover:bg-blue-600 text-white text-xs font-semibold glow-blue text-center"
+          >
+            Setup Project & PAT
+          </button>
+          <Link
+            to="/projects"
+            className="flex-1 sm:flex-none px-3 py-1.5 rounded-lg bg-surface-elevated hover:bg-surface-hover border border-border text-slate-200 text-xs font-semibold text-center"
+          >
+            Manage Projects
+          </Link>
+        </div>
       </div>
     );
   }

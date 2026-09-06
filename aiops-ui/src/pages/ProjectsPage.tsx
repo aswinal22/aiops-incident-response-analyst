@@ -5,16 +5,48 @@ import { Project, Service } from '../lib/types';
 import { PATDisclaimerBanner } from '../components/security/PATDisclaimerBanner';
 import { CreateProjectModal } from '../components/projects/CreateProjectModal';
 import { ProjectScopeModal } from '../components/projects/ProjectScopeModal';
-import { Folder, GitBranch, Plus, Server, Copy, Check, ExternalLink, Activity, ArrowRight, RefreshCw } from 'lucide-react';
+import { api } from '../lib/api';
+import { Folder, GitBranch, Plus, Server, Copy, Check, ExternalLink, Activity, ArrowRight, RefreshCw, Trash2, Sparkles } from 'lucide-react';
 
 export const ProjectsPage: React.FC = () => {
   const navigate = useNavigate();
-  const { projects, activeProject, activeService, setActiveProject, setActiveService, githubPat, refreshProjectsAndServices } = useAuth();
+  const { projects, activeProject, activeService, setActiveProject, setActiveService, githubPat, refreshProjectsAndServices, openOnboarding } = useAuth();
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedProjectForScope, setSelectedProjectForScope] = useState<Project | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const handleDeleteProject = async (projectId: string, projectName: string) => {
+    if (!window.confirm(`Are you sure you want to delete project "${projectName}" and all its scoped services?`)) {
+      return;
+    }
+    setDeletingId(projectId);
+    try {
+      await api.deleteProject(projectId);
+      await refreshProjectsAndServices();
+    } catch (err: any) {
+      alert(`Failed to delete project: ${err.message || 'Unknown error'}`);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const handleDeleteService = async (serviceId: string, serviceName: string) => {
+    if (!window.confirm(`Are you sure you want to delete microservice "${serviceName}"?`)) {
+      return;
+    }
+    setDeletingId(serviceId);
+    try {
+      await api.deleteService(serviceId);
+      await refreshProjectsAndServices();
+    } catch (err: any) {
+      alert(`Failed to delete service: ${err.message || 'Unknown error'}`);
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const handleSelectActive = (proj: Project, svc: Service) => {
     setActiveProject(proj);
@@ -75,19 +107,32 @@ export const ProjectsPage: React.FC = () => {
       {/* Projects List */}
       <div className="space-y-6">
         {safeProjects.length === 0 ? (
-          <div className="p-12 text-center bg-surface border border-border rounded-2xl space-y-3">
-            <Folder className="w-8 h-8 text-slate-500 mx-auto" />
-            <h3 className="text-sm font-bold text-slate-200">No Projects Configured</h3>
-            <p className="text-xs text-slate-400 max-w-sm mx-auto">
-              Create your first project to organize your microservices and scope GitHub repositories for autonomous investigation.
-            </p>
-            <button
-              onClick={() => setIsCreateOpen(true)}
-              className="px-4 py-2 rounded-lg bg-accent-blue hover:bg-blue-600 text-white text-xs font-semibold glow-blue inline-flex items-center gap-1.5"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Create Project</span>
-            </button>
+          <div className="p-12 text-center bg-surface border border-border rounded-2xl space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-accent-blue/10 border border-accent-blue/30 text-accent-blue mx-auto flex items-center justify-center glow-blue">
+              <Sparkles className="w-6 h-6" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-base font-bold text-slate-100">No Projects Configured</h3>
+              <p className="text-xs text-slate-400 max-w-md mx-auto">
+                Connect your GitHub Personal Access Token (PAT) and scope your microservice repositories for 24/7 autonomous incident triage.
+              </p>
+            </div>
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <button
+                onClick={openOnboarding}
+                className="px-4 py-2 rounded-xl bg-accent-blue hover:bg-blue-600 text-white text-xs font-semibold glow-blue inline-flex items-center gap-2"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Quick Setup Wizard (PAT + Repo)</span>
+              </button>
+              <button
+                onClick={() => setIsCreateOpen(true)}
+                className="px-4 py-2 rounded-xl bg-surface-elevated hover:bg-surface-hover border border-border text-slate-200 text-xs font-semibold inline-flex items-center gap-1.5"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Create Empty Project</span>
+              </button>
+            </div>
           </div>
         ) : (
           safeProjects.map((proj) => {
@@ -118,13 +163,23 @@ export const ProjectsPage: React.FC = () => {
                     {proj.description && <p className="text-xs text-slate-400">{proj.description}</p>}
                   </div>
 
-                  <button
-                    onClick={() => setSelectedProjectForScope(proj)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-elevated hover:bg-surface-hover border border-border text-xs font-semibold text-slate-200 transition-colors shrink-0"
-                  >
-                    <GitBranch className="w-3.5 h-3.5 text-purple-400" />
-                    <span>Scope GitHub Repo</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setSelectedProjectForScope(proj)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-surface-elevated hover:bg-surface-hover border border-border text-xs font-semibold text-slate-200 transition-colors shrink-0"
+                    >
+                      <GitBranch className="w-3.5 h-3.5 text-purple-400" />
+                      <span>Scope GitHub Repo</span>
+                    </button>
+                    <button
+                      onClick={() => handleDeleteProject(proj.id, proj.name)}
+                      disabled={deletingId === proj.id}
+                      title="Delete project"
+                      className="p-1.5 rounded-lg border border-rose-500/20 bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
 
                 {/* Scoped Microservices Grid */}
@@ -174,16 +229,26 @@ export const ProjectsPage: React.FC = () => {
                                 )}
                               </div>
 
-                              {svc.repo_url && (
-                                <a
-                                  href={svc.repo_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="p-1 text-slate-400 hover:text-slate-200"
+                              <div className="flex items-center gap-1">
+                                {svc.repo_url && (
+                                  <a
+                                    href={svc.repo_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="p-1 text-slate-400 hover:text-slate-200"
+                                  >
+                                    <ExternalLink className="w-3.5 h-3.5" />
+                                  </a>
+                                )}
+                                <button
+                                  onClick={() => handleDeleteService(svc.id, svc.name)}
+                                  disabled={deletingId === svc.id}
+                                  title="Delete service"
+                                  className="p-1 text-slate-400 hover:text-rose-400 transition-colors"
                                 >
-                                  <ExternalLink className="w-3.5 h-3.5" />
-                                </a>
-                              )}
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
                             </div>
 
                             {/* Webhook URL Box */}
