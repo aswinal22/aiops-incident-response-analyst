@@ -1,14 +1,31 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../lib/api';
 import { HealthStatus } from '../../lib/types';
-import { Zap, Folder, Server, LogOut, ChevronDown, CheckCircle2, AlertTriangle, Key } from 'lucide-react';
+import { Zap, Folder, Server, LogOut, ChevronDown, CheckCircle2, Key } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
   const { user, activeProject, activeService, projects, setActiveProject, setActiveService, patStatus, logout, openOnboarding } = useAuth();
   const [health, setHealth] = useState<HealthStatus | null>(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    };
+
+    if (isDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isDropdownOpen]);
 
   useEffect(() => {
     const checkHealth = async () => {
@@ -34,7 +51,7 @@ export const Navbar: React.FC = () => {
           </div>
           <div>
             <span className="font-bold text-xs tracking-wide text-slate-100 uppercase font-mono block">
-              AIOps SRE Studio
+              AIOps Incident Studio
             </span>
             <span className="text-[10px] text-slate-400 font-mono -mt-0.5 block">
               24/7 Autonomous Incident Response
@@ -42,8 +59,8 @@ export const Navbar: React.FC = () => {
           </div>
         </Link>
 
-        {/* Project & Service Context Switcher */}
-        <div className="relative hidden md:block">
+        {/* Project & Service Context Switcher with Outside Click Dismiss */}
+        <div className="relative hidden md:block" ref={dropdownRef}>
           <button
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#090d16] hover:bg-slate-800/80 border border-slate-800 text-xs font-mono text-slate-300 transition-all"
@@ -57,7 +74,7 @@ export const Navbar: React.FC = () => {
             <span className="text-slate-200 font-semibold truncate max-w-[120px]">
               {activeService ? activeService.name : 'Select Service'}
             </span>
-            <ChevronDown className="w-3 h-3 text-slate-500 ml-1" />
+            <ChevronDown className={`w-3 h-3 text-slate-500 ml-1 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
           </button>
 
           {/* Switcher Dropdown */}
@@ -168,20 +185,20 @@ export const Navbar: React.FC = () => {
           )}
         </div>
 
-        {/* User Profile & Logout */}
+        {/* User Profile & Logout (Clean display without static role) */}
         {user && (
           <div className="flex items-center gap-2 pl-2 border-l border-border">
             <div className="w-7 h-7 rounded-full bg-accent-blue/15 border border-accent-blue/30 text-accent-blue flex items-center justify-center font-mono font-bold text-xs">
-              {user.name.charAt(0).toUpperCase()}
+              {(user.name || user.username || 'U').charAt(0).toUpperCase()}
             </div>
             <div className="hidden xl:block text-left leading-tight">
-              <div className="text-xs font-semibold text-slate-200">{user.name}</div>
-              <div className="text-[10px] text-slate-400 font-mono">{user.role || 'SRE Analyst'}</div>
+              <div className="text-xs font-semibold text-slate-200">{user.name || user.username}</div>
+              <div className="text-[10px] text-slate-400 font-mono">@{user.username || (user.email ? user.email.split('@')[0] : 'user')}</div>
             </div>
 
             <button
               onClick={logout}
-              title="Log out of AIOps Studio"
+              title="Log out"
               className="flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-rose-500/15 border border-transparent hover:border-rose-500/30 text-slate-400 hover:text-rose-300 text-xs transition-colors ml-1"
             >
               <LogOut className="w-3.5 h-3.5" />

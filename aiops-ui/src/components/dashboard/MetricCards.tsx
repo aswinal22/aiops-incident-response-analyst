@@ -59,12 +59,12 @@ export const MetricCards: React.FC<MetricCardsProps> = ({ incidents }) => {
         </div>
       </div>
 
-      {/* Metric 4: Guardrails Status */}
+      {/* Metric 4: System Reliability */}
       <div className="bg-surface border border-border rounded-xl p-5 shadow-lg flex items-center justify-between">
         <div>
-          <span className="text-xs text-slate-400 font-medium">5-Layer Security</span>
-          <div className="text-2xl font-bold text-purple-400 mt-1 font-mono">100% Secure</div>
-          <span className="text-[11px] text-purple-300 mt-1 block">Zero PII Leakage</span>
+          <span className="text-xs text-slate-400 font-medium">Triage Health</span>
+          <div className="text-2xl font-bold text-purple-400 mt-1 font-mono">100% Active</div>
+          <span className="text-[11px] text-purple-300 mt-1 block">Zero False Positives</span>
         </div>
         <div className="w-10 h-10 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
           <ShieldCheck className="w-5 h-5" />
