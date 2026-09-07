@@ -174,6 +174,11 @@ class IncidentUpdatePayload(BaseModel):
     long_term_prevention: list[dict[str, Any]] | None = Field(default=None, description="Checklist of long term prevention tasks")
 
 
+class UrlIngestPayload(BaseModel):
+    url: str = Field(..., description="HTTP(S) URL pointing to a raw log file or log stream")
+    service: str = Field(default="target-app", description="Name or UUID of emitting microservice")
+
+
 # =========================================================================
 # User Accounts & Authentication APIs
 # =========================================================================
@@ -356,6 +361,7 @@ async def _process_ingested_log(
     message: str,
     timestamp: str | None,
     service_id_or_name: str = "target-app",
+    trigger_rca: bool = True,
 ) -> LogIngestResponse:
     """Core log processing pipeline with PII scrubbing, ML gatekeeper, LangGraph RCA, and DB persistence."""
     # 1. Resolve Service Metadata from Registry
@@ -414,7 +420,7 @@ async def _process_ingested_log(
     workflow_metrics: dict[str, Any] | None = None
     incident_id: str | None = None
 
-    if is_anomaly and investigation_graph is not None:
+    if is_anomaly and trigger_rca and investigation_graph is not None:
         print(f"[AIOps Engine] [ALERT] Anomaly in service '{service_name}'! Triggering LangGraph Workflow...")
         try:
             initial_state = {
@@ -578,3 +584,80 @@ def api_update_incident(incident_id: str, payload: IncidentUpdatePayload) -> dic
     if not success:
         raise HTTPException(status_code=400, detail="Failed to update incident.")
     return {"status": "updated", "incident_id": incident_id}
+
+
+@app.post("/api/ingest-from-url")
+async def api_ingest_from_url(payload: UrlIngestPayload) -> dict[str, Any]:
+    """Fetches remote log stream from a URL, executes ML anomaly detection, and streams to buffer and Supabase."""
+    clean_url = payload.url.strip()
+    if not clean_url.startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="Invalid URL format. Must begin with http:// or https://")
+
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+            response = await client.get(clean_url)
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Failed to fetch logs from URL: HTTP {response.status_code}",
+                )
+            text_content = response.text
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error connecting to log stream URL: {e}")
+
+    raw_lines = [l for l in text_content.splitlines() if l.strip()]
+    if not raw_lines:
+        return {"status": "success", "url": clean_url, "total_processed": 0, "anomalies_detected": 0, "results": []}
+
+    # Group logical log lines and multiline Python tracebacks (capped to 30 logs per batch)
+    log_blocks: list[str] = []
+    current_block: list[str] = []
+
+    for line in raw_lines[:30]:  # Protect against massive file ingest & fast response
+        if line.startswith(("Traceback", "  File ", "    ", "ZeroDivisionError", "FileNotFoundError", "TimeoutError", "ValueError", "Exception")):
+            current_block.append(line)
+        else:
+            if current_block:
+                log_blocks.append("\n".join(current_block))
+                current_block = []
+            current_block.append(line)
+    if current_block:
+        log_blocks.append("\n".join(current_block))
+
+    processed_results: list[dict[str, Any]] = []
+    anomaly_count = 0
+    rca_count = 0
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    for block in log_blocks:
+        # Only trigger full LangGraph synthesis for the first anomaly in the batch to avoid Groq rate limits
+        should_trigger_rca = (rca_count < 1)
+        res = await _process_ingested_log(
+            message=block,
+            timestamp=now_iso,
+            service_id_or_name=payload.service,
+            trigger_rca=should_trigger_rca,
+        )
+        if res.prediction == "Anomaly":
+            anomaly_count += 1
+            if res.incident_id:
+                rca_count += 1
+
+        processed_results.append({
+            "message": block[:120] + ("..." if len(block) > 120 else ""),
+            "prediction": res.prediction,
+            "confidence": res.confidence,
+            "incident_id": res.incident_id,
+        })
+
+    return {
+        "status": "success",
+        "url": clean_url,
+        "service": payload.service,
+        "total_processed": len(processed_results),
+        "anomalies_detected": anomaly_count,
+        "results": processed_results,
+    }

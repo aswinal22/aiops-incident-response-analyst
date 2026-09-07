@@ -105,6 +105,19 @@ def run_e2e_tests() -> None:
         print(f"  Total Incidents Found: {len(inc_list)}")
         print("  -> PASSED")
 
+        # Test 7: Remote URL Ingest Endpoint (/api/ingest-from-url)
+        print("\n[Test 7] Verifying POST /api/ingest-from-url...")
+        url_payload = {
+            "url": "https://raw.githubusercontent.com/aswinal22/aiops-incident-response-analyst/main/aiops-engine/ml/logs_dataset.csv",
+            "service": "target-app",
+        }
+        res_url = client.post("/api/ingest-from-url", json=url_payload)
+        assert res_url.status_code == 200, f"URL Ingestion failed: {res_url.text}"
+        url_data = res_url.json()
+        print(f"  Processed from URL: {url_data.get('total_processed')} logs, Anomalies: {url_data.get('anomalies_detected')}")
+        assert url_data.get("total_processed") > 0, "No logs processed from URL!"
+        print("  -> PASSED")
+
     print("\n" + "=" * 70)
     print("ALL INTEGRATION TESTS PASSED SUCCESSFULLY! (100% Coverage)")
     print("=" * 70)

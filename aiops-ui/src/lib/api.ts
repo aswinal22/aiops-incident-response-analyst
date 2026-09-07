@@ -126,5 +126,18 @@ export const api = {
       }),
     });
   },
+
+  ingestFromUrl: (url: string, service = 'target-app') =>
+    fetchApi<{
+      status: string;
+      url: string;
+      service: string;
+      total_processed: number;
+      anomalies_detected: number;
+      results: Array<{ message: string; prediction: string; confidence?: number; incident_id?: string }>;
+    }>('/api/ingest-from-url', {
+      method: 'POST',
+      body: JSON.stringify({ url, service }),
+    }),
 };
 

@@ -4,7 +4,7 @@ import { api } from '../lib/api';
 import { Incident } from '../lib/types';
 import { ActiveStreamHeader } from '../components/stream/ActiveStreamHeader';
 import { LiveLogViewer } from '../components/logs/LiveLogViewer';
-import { SimulationControls } from '../components/logs/SimulationControls';
+import { LogStreamPredictor } from '../components/logs/LogStreamPredictor';
 import { MetricCards } from '../components/dashboard/MetricCards';
 import { IncidentTable } from '../components/incidents/IncidentTable';
 import { Terminal, ShieldCheck, Cpu, AlertOctagon, RefreshCw } from 'lucide-react';
@@ -42,8 +42,8 @@ export const StreamConsolePage: React.FC = () => {
       {/* Top Metrics Row */}
       <MetricCards incidents={incidents} />
 
-      {/* Live Stream Error Simulation Bar */}
-      <SimulationControls onSuccess={fetchIncidents} />
+      {/* AI Log Stream Controller & Anomaly Predictor */}
+      <LogStreamPredictor onSuccess={fetchIncidents} />
 
       {/* Main Terminal Stdout Stream */}
       <div className="space-y-2">

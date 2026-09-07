@@ -4,7 +4,7 @@ import { Incident } from '../lib/types';
 import { MetricCards } from '../components/dashboard/MetricCards';
 import { IncidentTrendChart } from '../components/dashboard/IncidentTrendChart';
 import { IncidentTable } from '../components/incidents/IncidentTable';
-import { SimulationControls } from '../components/logs/SimulationControls';
+import { LogStreamPredictor } from '../components/logs/LogStreamPredictor';
 import { Activity, RefreshCw } from 'lucide-react';
 
 export const DashboardPage: React.FC = () => {
@@ -54,8 +54,8 @@ export const DashboardPage: React.FC = () => {
       {/* KPI Metric Cards */}
       <MetricCards incidents={incidents} />
 
-      {/* Simulation Controls */}
-      <SimulationControls onSuccess={fetchIncidents} />
+      {/* AI Log Stream Controller & Anomaly Predictor */}
+      <LogStreamPredictor onSuccess={fetchIncidents} />
 
       {/* Charts & Graphs */}
       <IncidentTrendChart incidents={incidents} />
