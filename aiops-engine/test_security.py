@@ -8,31 +8,35 @@ engine_dir = Path(__file__).resolve().parent
 sys.path.insert(0, str(engine_dir))
 
 from fastapi.testclient import TestClient
-from main import app
+from main import app, limiter
 from mcp_servers.codebase_mcp import read_file
 from utils.security import sanitize_text
 
 
+from unittest.mock import patch
+
 def test_layer1_rate_limiting() -> None:
     print("\n[Layer 1 Test] Verifying Ingress Rate Limiting (50 req/min)...")
     limiter.reset()
-    with TestClient(app) as client:
-        # Send 50 requests (should succeed)
-        for i in range(50):
-            res = client.post(
-                "/ingest-logs",
-                json={"message": f"INFO: Heartbeat check {i}", "service": "target-app"},
-            )
-            assert res.status_code == 200, f"Request {i} failed unexpectedly: {res.status_code}"
+    with patch("main.save_log_to_db", return_value="mock-log-id"), \
+         patch("main.get_service", return_value={"id": "mock-svc", "name": "target-app", "project_id": "mock-proj"}):
+        with TestClient(app) as client:
+            # Send 50 requests rapidly in-memory (should succeed)
+            for i in range(50):
+                res = client.post(
+                    "/ingest-logs",
+                    json={"message": f"INFO: Heartbeat check {i}", "service": "target-app"},
+                )
+                assert res.status_code == 200, f"Request {i} failed unexpectedly: {res.status_code}"
 
-        # 51st request MUST be rate-limited (HTTP 429)
-        res_limit = client.post(
-            "/ingest-logs",
-            json={"message": "INFO: Over limit check", "service": "target-app"},
-        )
-        print(f"  51st Request Status Code: {res_limit.status_code}")
-        assert res_limit.status_code == 429, f"Expected HTTP 429, got {res_limit.status_code}"
-        print("  -> PASSED (HTTP 429 Too Many Requests enforced)")
+            # 51st request MUST be rate-limited (HTTP 429)
+            res_limit = client.post(
+                "/ingest-logs",
+                json={"message": "INFO: Over limit check", "service": "target-app"},
+            )
+            print(f"  51st Request Status Code: {res_limit.status_code}")
+            assert res_limit.status_code == 429, f"Expected HTTP 429, got {res_limit.status_code}"
+            print("  -> PASSED (HTTP 429 Too Many Requests enforced)")
 
 
 def test_layer2_input_sanitization() -> None:

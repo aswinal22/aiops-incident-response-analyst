@@ -53,6 +53,7 @@ from registry import (
     register_project,
     register_service,
 )
+from utils.github_pr import create_remediation_pull_request
 from utils.security import sanitize_text
 
 # Load environment variables
@@ -611,6 +612,20 @@ def api_update_incident(incident_id: str, payload: IncidentUpdatePayload) -> dic
     if not success:
         raise HTTPException(status_code=400, detail="Failed to update incident.")
     return {"status": "updated", "incident_id": incident_id}
+
+
+@app.post("/api/incidents/{incident_id}/create-remediation-pr")
+async def api_create_remediation_pr(incident_id: str) -> dict[str, Any]:
+    """Generates a targeted code patch, creates a fix branch, and opens a GitHub Pull Request for the incident."""
+    inc = get_incident_by_id(incident_id)
+    if not inc:
+        raise HTTPException(status_code=404, detail="Incident not found.")
+
+    service_name = inc.get("service") or "aiops-incident-response-analyst"
+    svc_info = get_service(service_name) or {"name": service_name}
+
+    res = await create_remediation_pull_request(svc_info, inc)
+    return res
 
 
 @app.post("/api/ingest-from-url")

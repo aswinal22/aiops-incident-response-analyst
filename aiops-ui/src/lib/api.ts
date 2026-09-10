@@ -146,6 +146,18 @@ export const api = {
 
   getIncidentById: (id: string) => fetchApi<Incident>(`/api/incidents/${id}`),
 
+  createRemediationPR: (incidentId: string) =>
+    fetchApi<{
+      status: string;
+      pr_url: string;
+      pr_number?: number;
+      branch?: string;
+      patch_preview?: string;
+      message?: string;
+    }>(`/api/incidents/${incidentId}/create-remediation-pr`, {
+      method: 'POST',
+    }),
+
   updateIncident: (id: string, payload: { status?: string; immediate_fixes?: any[]; long_term_prevention?: any[] }) =>
     fetchApi<{ status: string; incident_id: string }>(`/api/incidents/${id}`, {
       method: 'PATCH',

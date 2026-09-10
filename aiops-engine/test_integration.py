@@ -118,6 +118,19 @@ def run_e2e_tests() -> None:
         assert url_data.get("total_processed") > 0, "No logs processed from URL!"
         print("  -> PASSED")
 
+        # Test 8: Autonomous GitHub Remediation PR Endpoint (/api/incidents/{id}/create-remediation-pr)
+        print("\n[Test 8] Verifying POST /api/incidents/{incident_id}/create-remediation-pr...")
+        if inc_list and len(inc_list) > 0:
+            test_inc_id = inc_list[0]["id"]
+            res_pr = client.post(f"/api/incidents/{test_inc_id}/create-remediation-pr")
+            assert res_pr.status_code == 200, f"Remediation PR endpoint failed: {res_pr.text}"
+            pr_res_data = res_pr.json()
+            print(f"  PR Status: {pr_res_data.get('status')}, Branch: {pr_res_data.get('branch')}, PR URL: {pr_res_data.get('pr_url')}")
+            assert pr_res_data.get("pr_url"), "No PR URL returned from remediation endpoint!"
+            print("  -> PASSED")
+        else:
+            print("  Skipped (No incidents in DB to create PR for)")
+
     print("\n" + "=" * 70)
     print("ALL INTEGRATION TESTS PASSED SUCCESSFULLY! (100% Coverage)")
     print("=" * 70)

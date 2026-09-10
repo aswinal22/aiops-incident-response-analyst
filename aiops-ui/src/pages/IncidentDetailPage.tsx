@@ -145,6 +145,9 @@ export const IncidentDetailPage: React.FC = () => {
             immediateFixes={incident.immediate_fixes}
             longTermPrevention={incident.long_term_prevention}
             currentStatus={incident.status}
+            prUrl={incident.pr_url}
+            faultyFile={incident.faulty_file}
+            serviceName={incident.service}
             onUpdate={fetchIncident}
           />
         </div>

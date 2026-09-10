@@ -70,6 +70,7 @@ export interface Incident {
   mttr_seconds?: number;
   created_at: string;
   resolved_at?: string;
+  pr_url?: string;
   traces?: AgentTrace[];
 }
 
