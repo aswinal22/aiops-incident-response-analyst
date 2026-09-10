@@ -9,66 +9,85 @@
 #   DB_USER                  – DB user (required)
 #   DB_PASSWORD              – DB password (required)
 #   DB_NAME                  – DB name (required)
-#   DB_POOL_SIZE             – max connections per pool (default: 10)
+#   DB_POOL_SIZE             – max connections per pool (default: 20)
 #   READ_REPLICA_ENABLED     – "true"/"false" (default: true)
 #   CIRCUIT_FAILURE_THRESHOLD – failures before opening circuit (default: 5)
 #   CIRCUIT_COOLDOWN_SECONDS  – seconds to stay open (default: 30)
 # --------------------------------------------------------------
 
-import os
 import asyncio
 import logging
+import os
 import time
-from typing import Optional
+from typing import Optional, Callable, Awaitable
 
 import asyncpg
 
 # ----------------------------------------------------------------------
-# Configuration
+# Logging
 # ----------------------------------------------------------------------
 _logger = logging.getLogger(__name__)
 
-_PRIMARY_DSN = (
-    f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}"
-    f"@{os.getenv('DB_HOST_PRIMARY')}/{os.getenv('DB_NAME')}"
-)
+# ----------------------------------------------------------------------
+# Configuration helpers
+# ----------------------------------------------------------------------
+def _env(var: str, default: Optional[str] = None) -> str:
+    """Fetch an environment variable, raising if required and missing."""
+    val = os.getenv(var, default)
+    if val is None:
+        raise RuntimeError(f"Environment variable {var} is required but not set")
+    return val
 
-_REPLICA_DSN = (
-    f"postgresql://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}"
-    f"@{os.getenv('DB_HOST_REPLICA')}/{os.getenv('DB_NAME')}"
-)
 
-_POOL_MAX_SIZE = int(os.getenv("DB_POOL_SIZE", "10"))
+def _make_dsn(host: str) -> str:
+    """Construct a PostgreSQL DSN from common components."""
+    return (
+        f"postgresql://{_env('DB_USER')}:{_env('DB_PASSWORD')}"
+        f"@{host}/{_env('DB_NAME')}"
+    )
+
+
+# Core DSNs
+_PRIMARY_DSN = _make_dsn(_env("DB_HOST_PRIMARY"))
+_REPLICA_DSN = _make_dsn(os.getenv("DB_HOST_REPLICA", ""))
+
+# Pool sizing – bumped to a safer default for production
+_POOL_MAX_SIZE = int(os.getenv("DB_POOL_SIZE", "20"))
+
+# Feature toggles
 _READ_REPLICA_ENABLED = os.getenv("READ_REPLICA_ENABLED", "true").lower() == "true"
 
+# Circuit‑breaker parameters
 _CIRCUIT_FAILURE_THRESHOLD = int(os.getenv("CIRCUIT_FAILURE_THRESHOLD", "5"))
 _CIRCUIT_COOLDOWN_SECONDS = int(os.getenv("CIRCUIT_COOLDOWN_SECONDS", "30"))
 
 # ----------------------------------------------------------------------
-# Circuit Breaker
+# Circuit Breaker implementation
 # ----------------------------------------------------------------------
 class CircuitBreaker:
-    """Simple async‑compatible circuit breaker."""
+    """Async‑compatible simple circuit breaker."""
 
     def __init__(self, failure_threshold: int, cooldown: int):
         self._failure_threshold = failure_threshold
         self._cooldown = cooldown
         self._failure_count = 0
-        self._state = "CLOSED"          # CLOSED, OPEN, HALF_OPEN
+        self._state: str = "CLOSED"          # CLOSED, OPEN, HALF_OPEN
         self._opened_at: Optional[float] = None
         self._lock = asyncio.Lock()
 
-    async def call(self, coro):
+    async def call(self, coro_factory: Callable[[], Awaitable]):
+        """Execute a coroutine respecting circuit‑breaker state."""
         async with self._lock:
             if self._state == "OPEN":
-                if time.time() - self._opened_at >= self._cooldown:
+                if time.time() - (self._opened_at or 0) >= self._cooldown:
                     self._state = "HALF_OPEN"
                     _logger.info("Circuit breaker transitioning to HALF_OPEN")
                 else:
                     raise RuntimeError("Circuit breaker is OPEN")
+
         try:
-            result = await coro()
-        except Exception as exc:
+            result = await coro_factory()
+        except Exception:
             await self._record_failure()
             raise
         else:
@@ -106,19 +125,43 @@ _replica_pool: Optional[asyncpg.Pool] = None
 _primary_cb = CircuitBreaker(_CIRCUIT_FAILURE_THRESHOLD, _CIRCUIT_COOLDOWN_SECONDS)
 _replica_cb = CircuitBreaker(_CIRCUIT_FAILURE_THRESHOLD, _CIRCUIT_COOLDOWN_SECONDS)
 
-
 # ----------------------------------------------------------------------
 # Helper: exponential back‑off retry
 # ----------------------------------------------------------------------
 async def _retry_with_backoff(
-    func,
+    func: Callable[[], Awaitable],
     *,
-    retries: int = 3,
-    base_delay: float = 0.1,
-    max_delay: float = 2.0,
+    retries: int = 2,
+    base_delay: float = 0.05,
+    max_delay: float = 0.5,
     jitter: bool = True,
-):
-    """Retry an async callable with exponential back‑off."""
+) -> Awaitable:
+    """
+    Retry an async callable with exponential back‑off.
+
+    Parameters
+    ----------
+    func: Callable[[], Awaitable]
+        The coroutine factory to invoke.
+    retries: int
+        Number of retry attempts after the first failure.
+    base_delay: float
+        Initial back‑off delay in seconds.
+    max_delay: float
+        Upper bound for the back‑off delay.
+    jitter: bool
+        Apply jitter to avoid thundering herd.
+
+    Returns
+    -------
+    Awaitable
+        Result of the successful call.
+
+    Raises
+    ------
+    Exception
+        Propagates the last exception if all retries fail.
+    """
     attempt = 0
     while True:
         try:
@@ -130,22 +173,23 @@ async def _retry_with_backoff(
                 raise
             delay = min(base_delay * (2 ** (attempt - 1)), max_delay)
             if jitter:
-                delay *= (0.5 + 0.5 * asyncio.get_event_loop().time() % 1)
+                delay *= (0.5 + 0.5 * (time.time() % 1))
             _logger.warning(
-                "Retry %d/%d after %0.2fs due to %s", attempt, retries, delay, exc
+                "Retry %d/%d after %.2fs due to %s",
+                attempt,
+                retries,
+                delay,
+                exc,
             )
             await asyncio.sleep(delay)
 
 
 # ----------------------------------------------------------------------
-# Pool initialization / teardown
+# Pool lifecycle management
 # ----------------------------------------------------------------------
-async def init_pools():
+async def init_pools() -> None:
     """Create connection pools for primary and (optionally) replica."""
     global _primary_pool, _replica_pool
-
-    if not _PRIMARY_DSN:
-        raise RuntimeError("Primary DSN is not configured")
 
     _primary_pool = await asyncpg.create_pool(
         dsn=_PRIMARY_DSN,
@@ -168,13 +212,15 @@ async def init_pools():
         _logger.info("Replica DB pool disabled via configuration")
 
 
-async def close_pools():
+async def close_pools() -> None:
     """Gracefully close all pools."""
     global _primary_pool, _replica_pool
+
     if _primary_pool:
         await _primary_pool.close()
         _primary_pool = None
         _logger.info("Primary DB pool closed")
+
     if _replica_pool:
         await _replica_pool.close()
         _replica_pool = None
@@ -182,11 +228,15 @@ async def close_pools():
 
 
 # ----------------------------------------------------------------------
-# Public API
+# Public API – connection acquisition
 # ----------------------------------------------------------------------
 async def acquire_connection(read: bool = False) -> asyncpg.Connection:
     """
     Acquire a connection from the appropriate pool.
+
+    For read‑only operations the replica is preferred when enabled.
+    If the replica is unavailable (circuit open or acquisition error),
+    the call transparently falls back to the primary.
 
     Parameters
     ----------
@@ -197,62 +247,4 @@ async def acquire_connection(read: bool = False) -> asyncpg.Connection:
     Returns
     -------
     asyncpg.Connection
-        An active connection ready for queries.
-    """
-    if read and _READ_REPLICA_ENABLED and _replica_pool:
-        cb = _replica_cb
-        pool = _replica_pool
-    else:
-        cb = _primary_cb
-        pool = _primary_pool
-
-    if not pool:
-        raise RuntimeError("Requested DB pool is not initialized")
-
-    async def _acquire():
-        return await pool.acquire()
-
-    # Apply circuit‑breaker and retry logic
-    conn = await cb.call(lambda: _retry_with_backoff(_acquire))
-    return conn
-
-
-async def release_connection(conn: asyncpg.Connection, read: bool = False):
-    """
-    Release a previously acquired connection back to its pool.
-
-    Parameters
-    ----------
-    conn: asyncpg.Connection
-        The connection to release.
-    read: bool
-        Must match the `read` flag used in `acquire_connection`.
-    """
-    if read and _READ_REPLICA_ENABLED and _replica_pool:
-        pool = _replica_pool
-    else:
-        pool = _primary_pool
-
-    if not pool:
-        _logger.error("Attempted to release connection to a non‑existent pool")
-        return
-
-    await pool.release(conn)
-
-
-# ----------------------------------------------------------------------
-# Context manager helpers
-# ----------------------------------------------------------------------
-class connection:
-    """
-    Async context manager for acquiring/releasing a DB connection.
-
-    Usage
-    -----
-    async with connection(read=True) as conn:
-        await conn.fetch(...)
-    """
-
-    def __init__(self, *, read: bool = False):
-        self._read = read
-        self._conn: Optional[asyncpg.Connection] = None
+        An active connection ready for queries
