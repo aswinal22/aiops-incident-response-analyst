@@ -4,33 +4,113 @@ import { HealthStatus, Incident, LogEntry, Project, Service } from './types';
 // Defaults to empty string to use Vite local proxy in development
 const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 
+export class ApiError extends Error {
+  status: number;
+  data?: any;
+
+  constructor(message: string, status: number, data?: any) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.data = data;
+    Object.setPrototypeOf(this, ApiError.prototype);
+  }
+}
+
 export async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const url = `${API_BASE}${endpoint}`;
-  const res = await fetch(url, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...options?.headers,
-    },
-    ...options,
-  });
+  let res: Response;
+
+  try {
+    res = await fetch(url, {
+      headers: {
+        'Content-Type': 'application/json',
+        ...options?.headers,
+      },
+      ...options,
+    });
+  } catch (networkErr: any) {
+    throw new ApiError(
+      'Unable to connect to the AIOps service. Please check your network connection.',
+      0
+    );
+  }
 
   const contentType = res.headers.get('content-type') || '';
 
   if (!res.ok) {
-    let errorDetail = res.statusText;
+    let cleanMessage = '';
+    let parsedData: any = null;
+
     try {
-      const errJson = await res.json();
-      errorDetail = errJson.detail || errJson.message || JSON.stringify(errJson);
+      if (contentType.includes('application/json')) {
+        parsedData = await res.json();
+        if (typeof parsedData.detail === 'string') {
+          cleanMessage = parsedData.detail;
+        } else if (Array.isArray(parsedData.detail) && parsedData.detail.length > 0) {
+          cleanMessage = parsedData.detail
+            .map((item: any) => {
+              if (typeof item === 'string') return item;
+              const field = Array.isArray(item.loc) ? item.loc.filter((l: string) => l !== 'body').join(' ') : '';
+              return field ? `${field}: ${item.msg || 'Invalid'}` : item.msg || 'Invalid field';
+            })
+            .join(', ');
+        } else if (typeof parsedData.message === 'string') {
+          cleanMessage = parsedData.message;
+        } else if (typeof parsedData.error === 'string') {
+          cleanMessage = parsedData.error;
+        }
+      } else {
+        const rawText = await res.text();
+        if (rawText && rawText.length < 200 && !rawText.includes('<html')) {
+          cleanMessage = rawText;
+        }
+      }
     } catch {
-      const text = await res.text();
-      errorDetail = text.slice(0, 150) || res.statusText;
+      // JSON body parsing failed
     }
-    throw new Error(`API Error (${res.status}): ${errorDetail}`);
+
+    // Strip technical error codes/prefixes if present in backend message
+    if (cleanMessage) {
+      cleanMessage = cleanMessage.replace(/^API Error \(\d+\):\s*/i, '').trim();
+    }
+
+    // Fallback to clear, human-friendly messages based on HTTP status
+    if (!cleanMessage) {
+      switch (res.status) {
+        case 400:
+          cleanMessage = 'The submitted information was invalid. Please check your inputs.';
+          break;
+        case 401:
+          cleanMessage = 'Invalid credentials or session expired. Please sign in again.';
+          break;
+        case 403:
+          cleanMessage = 'Access denied. You do not have permission for this action.';
+          break;
+        case 404:
+          cleanMessage = 'The requested resource could not be found.';
+          break;
+        case 429:
+          cleanMessage = 'Too many requests. Please wait a moment before trying again.';
+          break;
+        case 500:
+        case 502:
+        case 503:
+        case 504:
+          cleanMessage = 'The server is temporarily unavailable. Please try again shortly.';
+          break;
+        default:
+          cleanMessage = `Request failed (${res.statusText || 'Unknown'}). Please try again.`;
+          break;
+      }
+    }
+
+    throw new ApiError(cleanMessage, res.status, parsedData);
   }
 
   // If status is 200 but content is HTML, it means Vercel or proxy returned index.html fallback
   if (contentType.includes('text/html')) {
-    throw new Error('Backend API endpoint returned HTML. Ensure VITE_API_URL points to active backend service.');
+    throw new ApiError('Service connection error: Endpoint returned HTML. Please check backend status.', 200);
   }
 
   return res.json();

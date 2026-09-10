@@ -19,9 +19,11 @@ from typing import Any
 import joblib
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
@@ -109,8 +111,30 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
+
+@app.exception_handler(RateLimitExceeded)
+async def custom_rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    """User-friendly 429 response when rate limit is exceeded."""
+    return JSONResponse(
+        status_code=429,
+        content={"detail": "Too many requests. Please wait a moment before trying again."},
+    )
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Formats Pydantic 422 validation errors into clear human-readable messages."""
+    error_messages = []
+    for error in exc.errors():
+        loc_parts = [str(x) for x in error.get("loc", []) if x not in ("body",)]
+        field_name = " ".join(loc_parts).replace("_", " ").title() if loc_parts else "Field"
+        msg = error.get("msg", "Invalid value")
+        error_messages.append(f"{field_name}: {msg}")
+    detail = "; ".join(error_messages) if error_messages else "The submitted data is invalid. Please check your inputs."
+    return JSONResponse(
+        status_code=422,
+        content={"detail": detail},
+    )
 
 # CORS Middleware (permits Vercel, localhost, and custom cloud frontends)
 app.add_middleware(
@@ -203,7 +227,8 @@ def api_auth_signup(payload: UserSignupPayload) -> dict[str, Any]:
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Registration failed: {e}")
+        print(f"[AIOps Auth] Registration error: {e}")
+        raise HTTPException(status_code=500, detail="Unable to complete registration. Please try again.")
 
 
 @app.post("/api/auth/login")
@@ -224,7 +249,8 @@ def api_auth_login(payload: UserLoginPayload) -> dict[str, Any]:
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Authentication failed: {e}")
+        print(f"[AIOps Auth] Login error: {e}")
+        raise HTTPException(status_code=500, detail="Authentication service is temporarily unavailable. Please try again.")
 
 
 @app.post("/api/auth/verify")
@@ -236,7 +262,8 @@ def api_auth_verify(payload: TokenVerifyPayload) -> dict[str, Any]:
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Token verification error: {e}")
+        print(f"[AIOps Auth] Verify error: {e}")
+        raise HTTPException(status_code=500, detail="Session verification failed. Please sign in again.")
 
 
 
@@ -606,7 +633,8 @@ async def api_ingest_from_url(payload: UrlIngestPayload) -> dict[str, Any]:
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error connecting to log stream URL: {e}")
+        print(f"[AIOps Ingest URL Error] {e}")
+        raise HTTPException(status_code=400, detail="Unable to connect to log stream URL. Please verify the URL is valid and accessible.")
 
     raw_lines = [l for l in text_content.splitlines() if l.strip()]
     if not raw_lines:
