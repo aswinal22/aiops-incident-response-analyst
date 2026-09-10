@@ -6,12 +6,15 @@ import { formatDate, formatLatency, getSeverityBadge, getStatusBadge } from '../
 import { RCAMarkdown } from '../components/incidents/RCAMarkdown';
 import { RemediationActionCenter } from '../components/incidents/RemediationActionCenter';
 import { AgentTraceWaterfall } from '../components/incidents/AgentTraceWaterfall';
+import { RemediationPRBanner } from '../components/incidents/RemediationPRBanner';
+import { RemediationPRModal } from '../components/incidents/RemediationPRModal';
 import { ArrowLeft, Clock, Server, FileCode, AlertOctagon, RefreshCw } from 'lucide-react';
 
 export const IncidentDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const [incident, setIncident] = useState<Incident | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showPRModal, setShowPRModal] = useState(false);
 
   const fetchIncident = async () => {
     if (!id) return;
@@ -70,6 +73,16 @@ export const IncidentDetailPage: React.FC = () => {
           <span>Refresh</span>
         </button>
       </div>
+
+      {/* Prominent High-Visibility GitHub Remediation PR Banner (Top) */}
+      {incident.pr_url && (
+        <RemediationPRBanner
+          prUrl={incident.pr_url}
+          serviceName={incident.service}
+          faultyFile={incident.faulty_file}
+          onViewDetails={() => setShowPRModal(true)}
+        />
+      )}
 
       {/* Incident Hero Card */}
       <div className="bg-surface border border-border rounded-xl p-6 shadow-xl space-y-4">
@@ -149,10 +162,25 @@ export const IncidentDetailPage: React.FC = () => {
             faultyFile={incident.faulty_file}
             serviceName={incident.service}
             onUpdate={fetchIncident}
+            onOpenPRModal={() => setShowPRModal(true)}
           />
         </div>
       </div>
+
+      {/* Pop-up PR Modal Dialog */}
+      {incident.pr_url && (
+        <RemediationPRModal
+          isOpen={showPRModal}
+          onClose={() => setShowPRModal(false)}
+          prUrl={incident.pr_url}
+          serviceName={incident.service}
+          faultyFile={incident.faulty_file}
+          incidentSummary={incident.incident_summary}
+          immediateFixes={incident.immediate_fixes}
+        />
+      )}
     </div>
   );
 };
+
 

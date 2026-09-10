@@ -25,6 +25,7 @@ interface RemediationActionCenterProps {
   faultyFile?: string;
   serviceName?: string;
   onUpdate?: () => void;
+  onOpenPRModal?: () => void;
 }
 
 const cleanTaskText = (text: string): string => {
@@ -96,6 +97,7 @@ export const RemediationActionCenter: React.FC<RemediationActionCenterProps> = (
   faultyFile,
   serviceName,
   onUpdate,
+  onOpenPRModal,
 }) => {
   const [fixes, setFixes] = useState<ImmediateFixItem[]>(() => sanitizeImmediateFixes(immediateFixes));
   const [prevention, setPrevention] = useState<PreventionItem[]>(() => sanitizePreventionItems(longTermPrevention));
@@ -127,6 +129,7 @@ export const RemediationActionCenter: React.FC<RemediationActionCenterProps> = (
         setActivePrUrl(res.pr_url);
         if (res.branch) setPrBranch(res.branch);
         setPrSuccessMsg(res.message || 'Remediation Pull Request opened successfully.');
+        if (onOpenPRModal) onOpenPRModal();
       }
       if (onUpdate) onUpdate();
     } catch (err: any) {
@@ -367,6 +370,16 @@ export const RemediationActionCenter: React.FC<RemediationActionCenterProps> = (
               </div>
 
               <div className="flex items-center gap-2 pt-1">
+                {onOpenPRModal && (
+                  <button
+                    type="button"
+                    onClick={onOpenPRModal}
+                    className="py-2 px-3 rounded-lg bg-purple-950/70 hover:bg-purple-900 text-purple-200 text-xs font-semibold flex items-center justify-center gap-1.5 border border-purple-500/40 shadow-sm transition-all"
+                  >
+                    <span>PR Summary</span>
+                  </button>
+                )}
+
                 <a
                   href={activePrUrl}
                   target="_blank"
@@ -374,7 +387,7 @@ export const RemediationActionCenter: React.FC<RemediationActionCenterProps> = (
                   className="flex-1 py-2 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold flex items-center justify-center gap-1.5 shadow-md transition-all font-mono"
                 >
                   <GitPullRequest className="w-3.5 h-3.5" />
-                  <span>View Pull Request on GitHub</span>
+                  <span>Open PR on GitHub</span>
                   <ExternalLink className="w-3 h-3 ml-1" />
                 </a>
 
