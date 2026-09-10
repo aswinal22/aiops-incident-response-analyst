@@ -69,8 +69,9 @@ export interface Incident {
   mttd_seconds?: number;
   mttr_seconds?: number;
   created_at: string;
-  resolved_at?: string;
   pr_url?: string;
+  repo_url?: string;
+  branch?: string;
   traces?: AgentTrace[];
 }
 

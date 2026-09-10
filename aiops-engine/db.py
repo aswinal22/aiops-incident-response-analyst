@@ -488,7 +488,28 @@ def get_incident_by_id(incident_id: str) -> dict[str, Any] | None:
                 if meta.get("long_term_fixes"):
                     incident["long_term_prevention"] = meta["long_term_fixes"]
 
-            # 3. Fetch agent traces
+            # 3. Enrich with GitHub repo URL, branch name, and canonical PR URL
+            service_name = incident.get("service") or "aiops-incident-response-analyst"
+            short_id = str(incident.get("id", ""))[:8]
+            branch_name = f"fix/aiops-incident-{short_id}"
+            default_repo_url = "https://github.com/aswinal22/aiops-incident-response-analyst"
+
+            try:
+                from utils.registry import get_service
+                svc_info = get_service(service_name)
+                if svc_info and svc_info.get("repo_url"):
+                    default_repo_url = svc_info["repo_url"]
+                elif svc_info and svc_info.get("repo_owner") and svc_info.get("repo_name"):
+                    default_repo_url = f"https://github.com/{svc_info['repo_owner']}/{svc_info['repo_name']}"
+            except Exception:
+                pass
+
+            incident["repo_url"] = default_repo_url
+            incident["branch"] = branch_name
+            if not incident.get("pr_url"):
+                incident["pr_url"] = f"{default_repo_url}/compare/main...{branch_name}?expand=1"
+
+            # 4. Fetch agent traces
             trace_query = text(
                 """
                 SELECT id, node_name, latency_ms, input_tokens, output_tokens, total_tokens, model_name, mcp_tools_invoked, created_at
@@ -513,8 +534,9 @@ def update_incident_status(
     status: str | None = None,
     immediate_fixes: list[dict[str, Any]] | None = None,
     long_term_prevention: list[dict[str, Any]] | None = None,
+    pr_url: str | None = None,
 ) -> bool:
-    """Updates incident status or remediation checklists in Supabase."""
+    """Updates incident status, remediation checklists, or PR URL in Supabase."""
     engine = get_db_engine()
     if not engine:
         return False

@@ -8,7 +8,7 @@ import { RemediationActionCenter } from '../components/incidents/RemediationActi
 import { AgentTraceWaterfall } from '../components/incidents/AgentTraceWaterfall';
 import { RemediationPRBanner } from '../components/incidents/RemediationPRBanner';
 import { RemediationPRModal } from '../components/incidents/RemediationPRModal';
-import { ArrowLeft, Clock, Server, FileCode, AlertOctagon, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Clock, Server, FileCode, AlertOctagon, RefreshCw, GitPullRequest, ExternalLink } from 'lucide-react';
 
 export const IncidentDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -53,6 +53,12 @@ export const IncidentDetailPage: React.FC = () => {
     );
   }
 
+  const effectivePrUrl =
+    incident.pr_url ||
+    `https://github.com/aswinal22/aiops-incident-response-analyst/compare/main...fix/aiops-incident-${incident.id.slice(0, 8)}?expand=1`;
+  const effectiveBranch = incident.branch || `fix/aiops-incident-${incident.id.slice(0, 8)}`;
+  const effectiveRepoUrl = incident.repo_url || 'https://github.com/aswinal22/aiops-incident-response-analyst';
+
   return (
     <div className="space-y-6">
       {/* Breadcrumb & Navigation */}
@@ -75,14 +81,14 @@ export const IncidentDetailPage: React.FC = () => {
       </div>
 
       {/* Prominent High-Visibility GitHub Remediation PR Banner (Top) */}
-      {incident.pr_url && (
-        <RemediationPRBanner
-          prUrl={incident.pr_url}
-          serviceName={incident.service}
-          faultyFile={incident.faulty_file}
-          onViewDetails={() => setShowPRModal(true)}
-        />
-      )}
+      <RemediationPRBanner
+        prUrl={effectivePrUrl}
+        branch={effectiveBranch}
+        repoUrl={effectiveRepoUrl}
+        serviceName={incident.service}
+        faultyFile={incident.faulty_file}
+        onViewDetails={() => setShowPRModal(true)}
+      />
 
       {/* Incident Hero Card */}
       <div className="bg-surface border border-border rounded-xl p-6 shadow-xl space-y-4">
@@ -104,7 +110,7 @@ export const IncidentDetailPage: React.FC = () => {
         </div>
 
         {/* Metadata Grid */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs font-mono pt-1">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 text-xs font-mono pt-1">
           <div className="flex items-center gap-2">
             <Server className="w-4 h-4 text-slate-500 shrink-0" />
             <div>
@@ -136,6 +142,22 @@ export const IncidentDetailPage: React.FC = () => {
               <strong className="text-emerald-400">{formatDate(incident.created_at)}</strong>
             </div>
           </div>
+
+          <div className="flex items-center gap-2">
+            <GitPullRequest className="w-4 h-4 text-purple-400 shrink-0" />
+            <div className="truncate">
+              <span className="text-slate-500 block text-[10px]">GitHub PR</span>
+              <a
+                href={effectivePrUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-purple-300 hover:text-purple-200 font-bold flex items-center gap-1 truncate text-[11px]"
+              >
+                <span className="truncate">{effectiveBranch}</span>
+                <ExternalLink className="w-3 h-3 shrink-0" />
+              </a>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -158,7 +180,7 @@ export const IncidentDetailPage: React.FC = () => {
             immediateFixes={incident.immediate_fixes}
             longTermPrevention={incident.long_term_prevention}
             currentStatus={incident.status}
-            prUrl={incident.pr_url}
+            prUrl={effectivePrUrl}
             faultyFile={incident.faulty_file}
             serviceName={incident.service}
             onUpdate={fetchIncident}
@@ -168,17 +190,16 @@ export const IncidentDetailPage: React.FC = () => {
       </div>
 
       {/* Pop-up PR Modal Dialog */}
-      {incident.pr_url && (
-        <RemediationPRModal
-          isOpen={showPRModal}
-          onClose={() => setShowPRModal(false)}
-          prUrl={incident.pr_url}
-          serviceName={incident.service}
-          faultyFile={incident.faulty_file}
-          incidentSummary={incident.incident_summary}
-          immediateFixes={incident.immediate_fixes}
-        />
-      )}
+      <RemediationPRModal
+        isOpen={showPRModal}
+        onClose={() => setShowPRModal(false)}
+        prUrl={effectivePrUrl}
+        branch={effectiveBranch}
+        serviceName={incident.service}
+        faultyFile={incident.faulty_file}
+        incidentSummary={incident.incident_summary}
+        immediateFixes={incident.immediate_fixes}
+      />
     </div>
   );
 };
