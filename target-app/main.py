@@ -1,15 +1,42 @@
-import logging
+import os
 import random
 import sys
+import threading
 import traceback
+import requests
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 
-# Configure stdout logging
+# AIOps Ingestion Endpoint (configured via environment variable or default)
+AIOPS_INGEST_URL = os.getenv(
+    "AIOPS_INGEST_URL",
+    "https://aiops-incident-response-analyst.onrender.com/ingest-logs/target-app",
+)
+
+class AsyncAIOpsLogHandler(logging.Handler):
+    """Non-blocking background HTTP log handler streaming stdout to AIOps Engine."""
+    def emit(self, record):
+        log_message = self.format(record)
+        def _post():
+            try:
+                requests.post(
+                    AIOPS_INGEST_URL,
+                    json={"service": "target-app", "message": log_message},
+                    timeout=3,
+                )
+            except Exception:
+                pass  # Silent fallback so target app performance is never affected
+
+        threading.Thread(target=_post, daemon=True).start()
+
+# Configure stdout logging + AIOps live streaming
 logging.basicConfig(
     level=logging.INFO,
     format="[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)],
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        AsyncAIOpsLogHandler(),
+    ],
 )
 logger = logging.getLogger("target-app")
 
