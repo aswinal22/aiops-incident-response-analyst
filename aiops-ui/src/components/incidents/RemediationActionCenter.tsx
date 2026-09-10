@@ -1,17 +1,91 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { api } from '../../lib/api';
 import { CheckSquare, Square, ShieldAlert, Sparkles, CheckCircle2, GitPullRequest, ExternalLink, GitBranch, RefreshCw, AlertCircle, Check } from 'lucide-react';
 
+interface ImmediateFixItem {
+  task: string;
+  done: boolean;
+}
+
+interface PreventionItem {
+  recommendation?: string;
+  task?: string;
+  details?: string;
+  done?: boolean;
+}
+
 interface RemediationActionCenterProps {
   incidentId: string;
-  immediateFixes?: Array<{ task: string; done: boolean }>;
-  longTermPrevention?: Array<{ recommendation: string; details?: string; done?: boolean }>;
+  immediateFixes?: ImmediateFixItem[];
+  longTermPrevention?: PreventionItem[];
   currentStatus: string;
   prUrl?: string;
   faultyFile?: string;
   serviceName?: string;
   onUpdate?: () => void;
 }
+
+const cleanTaskText = (text: string): string => {
+  if (!text) return '';
+  return text.replace(/^(\d+[\.\)]\s*|\-\s+|\*\s+)/, '').trim();
+};
+
+const sanitizeImmediateFixes = (items?: ImmediateFixItem[]): ImmediateFixItem[] => {
+  if (!items || !Array.isArray(items)) return [];
+  const valid: ImmediateFixItem[] = [];
+
+  for (const item of items) {
+    if (!item || typeof item.task !== 'string') continue;
+    const t = item.task.trim();
+    if (
+      t.startsWith('```') ||
+      t.startsWith('|') ||
+      t.startsWith('POOL =') ||
+      t.startsWith('timeout=') ||
+      t.startsWith('dsn=') ||
+      t.startsWith('max_size=') ||
+      t.startsWith('command_timeout=') ||
+      t === ')' ||
+      t.length < 3
+    ) {
+      continue;
+    }
+    valid.push({
+      task: cleanTaskText(t),
+      done: Boolean(item.done),
+    });
+  }
+  return valid;
+};
+
+const sanitizePreventionItems = (items?: PreventionItem[]): PreventionItem[] => {
+  if (!items || !Array.isArray(items)) return [];
+  const valid: PreventionItem[] = [];
+
+  for (const item of items) {
+    if (!item) continue;
+    const text = cleanTaskText(item.recommendation || item.task || '');
+    if (
+      !text ||
+      text.startsWith('```') ||
+      text.startsWith('|') ||
+      text.startsWith('POOL =') ||
+      text.startsWith('timeout=') ||
+      text.startsWith('dsn=') ||
+      text.length < 3
+    ) {
+      continue;
+    }
+    valid.push({
+      recommendation: text,
+      details: item.details ? cleanTaskText(item.details) : undefined,
+      done: Boolean(item.done),
+    });
+  }
+  return valid;
+};
 
 export const RemediationActionCenter: React.FC<RemediationActionCenterProps> = ({
   incidentId,
@@ -23,10 +97,18 @@ export const RemediationActionCenter: React.FC<RemediationActionCenterProps> = (
   serviceName,
   onUpdate,
 }) => {
-  const [fixes, setFixes] = useState(immediateFixes);
-  const [prevention, setPrevention] = useState(longTermPrevention);
+  const [fixes, setFixes] = useState<ImmediateFixItem[]>(() => sanitizeImmediateFixes(immediateFixes));
+  const [prevention, setPrevention] = useState<PreventionItem[]>(() => sanitizePreventionItems(longTermPrevention));
   const [status, setStatus] = useState(currentStatus);
   const [saving, setSaving] = useState(false);
+
+  // Sync state when props change
+  useEffect(() => {
+    setFixes(sanitizeImmediateFixes(immediateFixes));
+    setPrevention(sanitizePreventionItems(longTermPrevention));
+    setStatus(currentStatus);
+    setActivePrUrl(prUrl || null);
+  }, [immediateFixes, longTermPrevention, currentStatus, prUrl]);
 
   // GitHub PR creation states
   const [creatingPr, setCreatingPr] = useState(false);
@@ -157,7 +239,7 @@ export const RemediationActionCenter: React.FC<RemediationActionCenterProps> = (
               <div
                 key={idx}
                 onClick={() => toggleImmediateFix(idx)}
-                className={`p-2.5 rounded-lg border flex items-start gap-2.5 cursor-pointer select-none transition-all ${
+                className={`p-3 rounded-lg border flex items-start gap-3 cursor-pointer select-none transition-all ${
                   fix.done
                     ? 'bg-emerald-950/20 border-emerald-800/40 text-slate-400 line-through'
                     : 'bg-surface-elevated hover:bg-surface-hover border-border text-slate-200'
@@ -168,7 +250,22 @@ export const RemediationActionCenter: React.FC<RemediationActionCenterProps> = (
                 ) : (
                   <Square className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
                 )}
-                <span className="text-xs leading-relaxed">{fix.task}</span>
+                <div className="text-xs leading-relaxed flex-1">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      p: ({ children }) => <span className="inline">{children}</span>,
+                      strong: ({ children }) => <strong className="font-semibold text-slate-100">{children}</strong>,
+                      code: ({ children }) => (
+                        <code className="px-1.5 py-0.5 rounded bg-slate-900/90 text-purple-300 font-mono text-[11px] border border-slate-800/80">
+                          {children}
+                        </code>
+                      ),
+                    }}
+                  >
+                    {fix.task}
+                  </ReactMarkdown>
+                </div>
               </div>
             ))}
           </div>
@@ -189,7 +286,7 @@ export const RemediationActionCenter: React.FC<RemediationActionCenterProps> = (
               <div
                 key={idx}
                 onClick={() => togglePrevention(idx)}
-                className={`p-2.5 rounded-lg border flex items-start gap-2.5 cursor-pointer select-none transition-all ${
+                className={`p-3 rounded-lg border flex items-start gap-3 cursor-pointer select-none transition-all ${
                   item.done
                     ? 'bg-emerald-950/20 border-emerald-800/40 text-slate-400 line-through'
                     : 'bg-surface-elevated hover:bg-surface-hover border-border text-slate-200'
@@ -200,9 +297,26 @@ export const RemediationActionCenter: React.FC<RemediationActionCenterProps> = (
                 ) : (
                   <Square className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
                 )}
-                <div className="text-xs leading-relaxed">
-                  <strong>{item.recommendation}</strong>
-                  {item.details && <p className="text-[11px] text-slate-400 mt-0.5">{item.details}</p>}
+                <div className="text-xs leading-relaxed flex-1">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={{
+                      p: ({ children }) => <span className="inline">{children}</span>,
+                      strong: ({ children }) => <strong className="font-semibold text-slate-100">{children}</strong>,
+                      code: ({ children }) => (
+                        <code className="px-1.5 py-0.5 rounded bg-slate-900/90 text-cyan-300 font-mono text-[11px] border border-slate-800/80">
+                          {children}
+                        </code>
+                      ),
+                    }}
+                  >
+                    {item.recommendation || item.task || ''}
+                  </ReactMarkdown>
+                  {item.details && (
+                    <p className="text-[11px] text-slate-400 mt-1 pl-0.5">
+                      {item.details}
+                    </p>
+                  )}
                 </div>
               </div>
             ))}

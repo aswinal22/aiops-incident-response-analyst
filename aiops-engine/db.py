@@ -46,6 +46,102 @@ def get_db_engine() -> Engine | None:
         return None
 
 
+def parse_remediation_section(section_text: str) -> list[dict[str, Any]]:
+    """Parses Section 5 remediation text (markdown tables, numbered lists, bullet points, or code blocks)
+    into clean, cohesive task items without splitting code blocks into separate checklist tasks."""
+    if not section_text or not section_text.strip():
+        return []
+
+    tasks: list[dict[str, Any]] = []
+    lines = [line.strip() for line in section_text.splitlines() if line.strip()]
+
+    # Check if section contains a Markdown table (at least 2 lines with |)
+    table_lines = [l for l in lines if l.startswith("|") and not re.match(r"^\|[\s\-:|]+\|$", l)]
+    if len(table_lines) >= 2:
+        # First row is header, subsequent are data rows
+        data_rows = table_lines[1:]
+        for row in data_rows:
+            cols = [c.strip() for c in row.strip("|").split("|")]
+            if not cols or all(not c for c in cols):
+                continue
+
+            action = cols[0] if len(cols) > 0 else ""
+            desc = cols[1] if len(cols) > 1 else ""
+            owner = cols[2] if len(cols) > 2 else ""
+            target = cols[3] if len(cols) > 3 else ""
+
+            if not action and not desc:
+                continue
+
+            task_parts = []
+            if action:
+                task_parts.append(action)
+            if desc and desc != action:
+                task_parts.append(f"— {desc}")
+
+            meta_parts = []
+            if owner and "owner" not in owner.lower():
+                meta_parts.append(f"Owner: {owner}")
+            if target and "target" not in target.lower():
+                meta_parts.append(f"Target: {target}")
+
+            if meta_parts:
+                task_parts.append(f"({', '.join(meta_parts)})")
+
+            full_task = " ".join(task_parts).strip()
+            if full_task and len(full_task) > 3:
+                tasks.append({"task": full_task, "done": False})
+
+        if tasks:
+            return tasks
+
+    # If not a table, parse numbered/bulleted items and filter code fences/internal code lines
+    current_item: str | None = None
+    in_code_block = False
+
+    for line in lines:
+        # Toggle code block state
+        if line.startswith("```"):
+            in_code_block = not in_code_block
+            continue
+
+        # Inside code blocks, do NOT create independent checklist tasks
+        if in_code_block:
+            continue
+
+        # Ignore markdown table separator lines or standalone table headers
+        if line.startswith("|") and (re.match(r"^\|[\s\-:|]+\|$", line) or "action" in line.lower()):
+            continue
+
+        # Check for numbered item (e.g. "1. **Increase DB pool size**" or "- **Add retry**")
+        numbered_match = re.match(r"^(\d+[\.\)]\s*|\-\s+|\*\s+)(.*)", line)
+        if numbered_match:
+            if current_item:
+                tasks.append({"task": current_item.strip(), "done": False})
+            current_item = numbered_match.group(2).strip()
+        elif current_item:
+            # Continuation line of the current task
+            if not line.startswith("#") and not line.startswith("|"):
+                current_item += " " + line
+        else:
+            if not line.startswith("#") and not line.startswith("|") and len(line) > 5:
+                current_item = line
+
+    if current_item:
+        tasks.append({"task": current_item.strip(), "done": False})
+
+    # Clean up tasks: strip any remaining leading numbers or bullets
+    cleaned_tasks: list[dict[str, Any]] = []
+    for t in tasks:
+        raw_text = t.get("task", "").strip()
+        clean_text = re.sub(r"^(\d+[\.\)]\s*|\-\s+|\*\s+)", "", raw_text).strip()
+        # Filter out standalone code lines or fragments
+        if clean_text and len(clean_text) > 3 and not clean_text.startswith("```"):
+            cleaned_tasks.append({"task": clean_text, "done": bool(t.get("done", False))})
+
+    return cleaned_tasks
+
+
 def parse_rca_metadata(rca_markdown: str) -> dict[str, Any]:
     """Extracts summary, exception type, faulty file, and action items from RCA Markdown."""
     summary = "Runtime anomaly diagnosed by AIOps agent."
@@ -55,36 +151,60 @@ def parse_rca_metadata(rca_markdown: str) -> dict[str, Any]:
     long_term_fixes: list[dict[str, Any]] = []
 
     try:
-        # Extract exception type
-        exc_match = re.search(r"\[([A-Za-z0-9_]+Error)\]|([A-Za-z0-9_]+Error):", rca_markdown)
+        # 1. Extract exception type
+        exc_match = re.search(
+            r"\[([A-Za-z0-9_]+(?:Error|Exception))\]|([A-Za-z0-9_]+(?:Error|Exception)):|Exception:\s*([A-Za-z0-9_]+)",
+            rca_markdown,
+        )
         if exc_match:
-            detected_exception = exc_match.group(1) or exc_match.group(2)
+            detected_exception = exc_match.group(1) or exc_match.group(2) or exc_match.group(3) or detected_exception
 
-        # Extract summary
-        summary_match = re.search(r"\*\*Incident Summary\*\*:\s*([^\n]+)", rca_markdown, re.IGNORECASE)
-        if summary_match:
-            summary = summary_match.group(1).strip()
+        # 2. Extract summary (from tables or bullet points)
+        summary_table_match = re.search(
+            r"\|\s*\*\*Incident Summary\*\*\s*\|\s*([^|\n]+)", rca_markdown, re.IGNORECASE
+        )
+        if summary_table_match:
+            summary = summary_table_match.group(1).strip()
+        else:
+            summary_match = re.search(
+                r"(?:\*\*Incident Summary\*\*[:\-]\s*|\bIncident Summary\b\s*[:\-]\s*)([^\n]+)",
+                rca_markdown,
+                re.IGNORECASE,
+            )
+            if summary_match:
+                summary = summary_match.group(1).strip()
 
-        # Extract faulty file
-        file_match = re.search(r"([a-zA-Z0-9_\-]+\.py)", rca_markdown)
+        # 3. Extract faulty file
+        file_match = re.search(r"([a-zA-Z0-9_\-/]+\.py)", rca_markdown)
         if file_match:
             faulty_file = file_match.group(1)
 
-        # Parse immediate fixes
-        imm_section = re.search(r"###?\s*5\.1\s*Immediate[^\n]*\n(.*?)(?=###?\s*5\.2|\Z)", rca_markdown, re.DOTALL | re.IGNORECASE)
+        # 4. Parse immediate fixes (Section 5.1 or Section 5)
+        imm_section = re.search(
+            r"###?\s*5\.1\s*Immediate[^\n]*\n(.*?)(?=###?\s*5\.2|\Z|##\s*6)",
+            rca_markdown,
+            re.DOTALL | re.IGNORECASE,
+        )
         if imm_section:
-            for line in imm_section.group(1).splitlines():
-                clean = line.strip().lstrip("-* ").strip()
-                if clean and not clean.startswith("|") and len(clean) > 5:
-                    immediate_fixes.append({"task": clean, "done": False})
+            immediate_fixes = parse_remediation_section(imm_section.group(1))
+        else:
+            # Fallback to general section 5
+            sec5 = re.search(
+                r"##\s*5\.?\s*Actionable[^\n]*\n(.*?)(?=##\s*6|\Z)",
+                rca_markdown,
+                re.DOTALL | re.IGNORECASE,
+            )
+            if sec5:
+                immediate_fixes = parse_remediation_section(sec5.group(1))
 
-        # Parse long term prevention
-        lt_section = re.search(r"###?\s*5\.2\s*Long[^\n]*\n(.*?)(?=###?\s*5\.3|\Z|##\s*6)", rca_markdown, re.DOTALL | re.IGNORECASE)
+        # 5. Parse long term prevention (Section 5.2)
+        lt_section = re.search(
+            r"###?\s*5\.2\s*Long[^\n]*\n(.*?)(?=###?\s*5\.3|\Z|##\s*6)",
+            rca_markdown,
+            re.DOTALL | re.IGNORECASE,
+        )
         if lt_section:
-            for line in lt_section.group(1).splitlines():
-                clean = line.strip().lstrip("-* ").strip()
-                if clean and not clean.startswith("|") and len(clean) > 5:
-                    long_term_fixes.append({"task": clean, "done": False})
+            long_term_fixes = parse_remediation_section(lt_section.group(1))
 
     except Exception as e:
         logger.warning(f"Error parsing RCA markdown metadata: {e}")
@@ -337,7 +457,38 @@ def get_incident_by_id(incident_id: str) -> dict[str, Any] | None:
             if incident.get("trigger_log_id"):
                 incident["trigger_log_id"] = str(incident["trigger_log_id"])
 
-            # 2. Fetch agent traces
+            # 2. Auto-heal remediation checklists if raw markdown is present and tasks contain code fragments or are empty
+            rca_md = incident.get("rca_report_markdown")
+            imm_fixes = incident.get("immediate_fixes")
+            lt_prevention = incident.get("long_term_prevention")
+
+            def has_broken_tasks(tasks_list: Any) -> bool:
+                if not tasks_list or not isinstance(tasks_list, list) or len(tasks_list) == 0:
+                    return True
+                for item in tasks_list:
+                    if isinstance(item, dict):
+                        t = str(item.get("task", "") or item.get("recommendation", "")).strip()
+                        if (
+                            t.startswith("```")
+                            or t.startswith("|")
+                            or t.startswith("POOL =")
+                            or t.startswith("timeout=")
+                            or t.startswith("dsn=")
+                            or t.startswith("max_size=")
+                            or t.startswith("command_timeout=")
+                            or t == ")"
+                        ):
+                            return True
+                return False
+
+            if rca_md and (has_broken_tasks(imm_fixes) or has_broken_tasks(lt_prevention)):
+                meta = parse_rca_metadata(rca_md)
+                if meta.get("immediate_fixes"):
+                    incident["immediate_fixes"] = meta["immediate_fixes"]
+                if meta.get("long_term_fixes"):
+                    incident["long_term_prevention"] = meta["long_term_fixes"]
+
+            # 3. Fetch agent traces
             trace_query = text(
                 """
                 SELECT id, node_name, latency_ms, input_tokens, output_tokens, total_tokens, model_name, mcp_tools_invoked, created_at
