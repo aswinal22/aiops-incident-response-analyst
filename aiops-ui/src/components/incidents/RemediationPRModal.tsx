@@ -1,22 +1,31 @@
 import React, { useState } from 'react';
-import { GitPullRequest, ExternalLink, Copy, Check, X, GitBranch, FileCode, CheckCircle2, ShieldCheck } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { GitPullRequest, ExternalLink, Copy, Check, X, GitBranch, FileCode, CheckCircle2, ShieldCheck, Sparkles, FolderGit2 } from 'lucide-react';
 
 interface RemediationPRModalProps {
   isOpen: boolean;
   onClose: () => void;
   prUrl: string;
   branch?: string;
+  repoUrl?: string;
   serviceName?: string;
   faultyFile?: string;
   incidentSummary?: string;
   immediateFixes?: Array<{ task: string; done?: boolean }>;
 }
 
+const cleanTaskText = (text: string): string => {
+  if (!text) return '';
+  return text.replace(/^(\d+[\.\)]\s*|\-\s+|\*\s+)/, '').trim();
+};
+
 export const RemediationPRModal: React.FC<RemediationPRModalProps> = ({
   isOpen,
   onClose,
   prUrl,
   branch,
+  repoUrl = 'https://github.com/aswinal22/aiops-incident-response-analyst',
   serviceName,
   faultyFile,
   incidentSummary,
@@ -40,25 +49,42 @@ export const RemediationPRModal: React.FC<RemediationPRModalProps> = ({
     }
   };
 
+  // Filter and clean immediate fixes for preview
+  const validFixes = immediateFixes
+    .filter((f) => {
+      if (!f || typeof f.task !== 'string') return false;
+      const t = f.task.trim();
+      return (
+        !t.startsWith('```') &&
+        !t.startsWith('|') &&
+        !t.startsWith('POOL =') &&
+        !t.startsWith('timeout=') &&
+        !t.startsWith('dsn=') &&
+        t.length > 3
+      );
+    })
+    .slice(0, 4);
+
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-surface border-2 border-purple-500/40 rounded-2xl max-w-xl w-full p-6 shadow-2xl shadow-purple-950/50 space-y-5 animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+      <div className="bg-surface border-2 border-purple-500/50 rounded-2xl max-w-xl w-full p-6 shadow-2xl shadow-purple-950/70 space-y-5 animate-in fade-in zoom-in-95 duration-200">
         {/* Header */}
         <div className="flex items-start justify-between border-b border-border pb-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-purple-300 shadow-inner">
-              <GitPullRequest className="w-5 h-5" />
+            <div className="w-11 h-11 rounded-xl bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-purple-300 shadow-inner">
+              <GitPullRequest className="w-5 h-5 animate-pulse text-purple-300" />
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-bold text-slate-100">Autonomous Remediation PR</h3>
                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-semibold flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
                   Ready
                 </span>
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Target Service: <span className="text-purple-300 font-mono font-medium">{serviceName || 'target-app'}</span>
+              <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1.5">
+                <span>Target Service:</span>
+                <span className="text-purple-300 font-mono font-medium">{serviceName || 'target-app'}</span>
               </p>
             </div>
           </div>
@@ -89,9 +115,10 @@ export const RemediationPRModal: React.FC<RemediationPRModalProps> = ({
             <div className="flex items-center gap-2 truncate">
               <GitBranch className="w-4 h-4 text-purple-400 shrink-0" />
               <span className="text-slate-400 text-[11px]">Branch:</span>
-              <span className="text-slate-200 font-bold truncate text-[11px]">{effectiveBranch}</span>
+              <span className="text-purple-300 font-bold truncate text-[11px]">{effectiveBranch}</span>
             </div>
             <button
+              type="button"
               onClick={() => copyToClipboard(effectiveBranch, 'branch')}
               className="flex items-center gap-1 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] border border-slate-700 shrink-0 transition-colors"
             >
@@ -116,6 +143,7 @@ export const RemediationPRModal: React.FC<RemediationPRModalProps> = ({
             <div className="flex items-center justify-between">
               <span className="text-[10px] uppercase font-bold tracking-wider text-purple-300">GitHub Pull Request URL:</span>
               <button
+                type="button"
                 onClick={() => copyToClipboard(prUrl, 'url')}
                 className="flex items-center gap-1 text-[10px] text-purple-300 hover:text-purple-100 transition-colors"
               >
@@ -123,21 +151,42 @@ export const RemediationPRModal: React.FC<RemediationPRModalProps> = ({
                 <span>{copiedUrl ? 'Copied Link' : 'Copy Link'}</span>
               </button>
             </div>
-            <div className="text-[11px] text-slate-300 break-all font-mono select-all bg-slate-900/90 p-2 rounded border border-slate-800">
+            <div className="text-[11px] text-slate-300 break-all font-mono select-all bg-slate-900/90 p-2.5 rounded border border-slate-800 leading-relaxed">
               {prUrl}
             </div>
           </div>
         </div>
 
-        {/* Fix Preview */}
-        {immediateFixes.length > 0 && (
-          <div className="space-y-1.5">
-            <span className="text-[10px] uppercase font-bold tracking-wider text-slate-400">Included Fix Highlights:</span>
-            <div className="max-h-28 overflow-y-auto space-y-1 text-xs text-slate-300 pr-1">
-              {immediateFixes.slice(0, 3).map((f, i) => (
-                <div key={i} className="flex items-start gap-1.5 text-[11px] leading-relaxed">
+        {/* Fix Preview with Rich ReactMarkdown */}
+        {validFixes.length > 0 && (
+          <div className="space-y-2 pt-1 border-t border-border">
+            <div className="flex items-center gap-1.5 text-[10px] uppercase font-bold tracking-wider text-purple-300">
+              <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+              <span>Included Fix Highlights:</span>
+            </div>
+            <div className="max-h-40 overflow-y-auto space-y-2 text-xs text-slate-300 pr-1">
+              {validFixes.map((f, i) => (
+                <div
+                  key={i}
+                  className="flex items-start gap-2.5 text-[11px] leading-relaxed p-2.5 rounded-lg bg-surface-elevated/90 border border-border"
+                >
                   <CheckCircle2 className="w-3.5 h-3.5 text-purple-400 shrink-0 mt-0.5" />
-                  <span className="line-clamp-2">{f.task}</span>
+                  <div className="flex-1">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        p: ({ children }) => <span className="inline">{children}</span>,
+                        strong: ({ children }) => <strong className="font-semibold text-slate-100">{children}</strong>,
+                        code: ({ children }) => (
+                          <code className="px-1.5 py-0.5 rounded bg-slate-900 text-purple-300 font-mono text-[10px] border border-purple-500/20">
+                            {children}
+                          </code>
+                        ),
+                      }}
+                    >
+                      {cleanTaskText(f.task)}
+                    </ReactMarkdown>
+                  </div>
                 </div>
               ))}
             </div>
@@ -147,6 +196,7 @@ export const RemediationPRModal: React.FC<RemediationPRModalProps> = ({
         {/* Actions Footer */}
         <div className="flex items-center justify-end gap-3 pt-3 border-t border-border">
           <button
+            type="button"
             onClick={onClose}
             className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:bg-surface-hover border border-border transition-colors"
           >
@@ -157,7 +207,7 @@ export const RemediationPRModal: React.FC<RemediationPRModalProps> = ({
             href={prUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-2 px-5 py-2 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:from-purple-500 hover:via-indigo-500 hover:to-blue-500 text-white text-xs font-bold shadow-lg shadow-purple-900/40 transition-all transform hover:scale-[1.02]"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 hover:from-purple-500 hover:via-indigo-500 hover:to-blue-500 text-white text-xs font-bold shadow-lg shadow-purple-950/60 transition-all transform hover:scale-[1.02]"
           >
             <span>Open Pull Request on GitHub</span>
             <ExternalLink className="w-3.5 h-3.5" />

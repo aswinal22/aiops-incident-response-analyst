@@ -195,6 +195,7 @@ export const IncidentDetailPage: React.FC = () => {
         onClose={() => setShowPRModal(false)}
         prUrl={effectivePrUrl}
         branch={effectiveBranch}
+        repoUrl={effectiveRepoUrl}
         serviceName={incident.service}
         faultyFile={incident.faulty_file}
         incidentSummary={incident.incident_summary}
