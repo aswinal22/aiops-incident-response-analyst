@@ -19,6 +19,7 @@ import {
 
 export const OnboardingWizardModal: React.FC = () => {
   const {
+    user,
     githubPat,
     patStatus,
     saveGitHubPat,
@@ -135,6 +136,7 @@ export const OnboardingWizardModal: React.FC = () => {
       const projRes = await api.createProject({
         name: projectName.trim(),
         description: projectDescription.trim() || `Observability and incident triage for ${projectName.trim()}`,
+        user_id: user?.id,
       });
 
       // 2. Register the service with GitHub repo metadata

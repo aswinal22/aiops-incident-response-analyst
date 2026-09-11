@@ -170,6 +170,7 @@ class LogIngestResponse(BaseModel):
 class ProjectCreatePayload(BaseModel):
     name: str = Field(..., description="Project name")
     description: str = Field(default="", description="Project description")
+    user_id: str | None = Field(default=None, description="Optional creator User UUID for tenant isolation")
 
 
 class UserSignupPayload(BaseModel):
@@ -285,14 +286,14 @@ class ServiceCreatePayload(BaseModel):
 @app.post("/api/projects")
 def api_create_project(payload: ProjectCreatePayload) -> dict[str, str]:
     """Registers a new project group in Supabase."""
-    proj_id = register_project(payload.name, payload.description)
+    proj_id = register_project(payload.name, payload.description, payload.user_id)
     return {"status": "created", "project_id": proj_id, "name": payload.name}
 
 
 @app.get("/api/projects")
-def api_list_projects() -> list[dict[str, Any]]:
-    """Lists all registered projects."""
-    return list_projects()
+def api_list_projects(user_id: str | None = None) -> list[dict[str, Any]]:
+    """Lists registered projects, optionally filtered by user_id."""
+    return list_projects(user_id)
 
 
 @app.post("/api/services")

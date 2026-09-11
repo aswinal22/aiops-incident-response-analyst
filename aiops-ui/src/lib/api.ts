@@ -17,34 +17,72 @@ export class ApiError extends Error {
   }
 }
 
-export async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> {
+// Default 60-second timeout to gracefully handle cloud container cold starts (Render/Railway)
+const DEFAULT_TIMEOUT_MS = 60000;
+
+export async function fetchApi<T>(
+  endpoint: string,
+  options?: RequestInit & { timeoutMs?: number; retries?: number }
+): Promise<T> {
   const url = `${API_BASE}${endpoint}`;
-  let res: Response;
+  const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const maxRetries = options?.retries ?? 2;
 
-  // 8-second timeout guard to prevent infinite UI hangs on slow/cold connections
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 8000);
+  let lastError: any = null;
 
-  try {
-    res = await fetch(url, {
-      signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options?.headers,
-      },
-      ...options,
-    });
-  } catch (networkErr: any) {
-    if (networkErr.name === 'AbortError') {
-      throw new ApiError('Request timed out. The server took too long to respond.', 408);
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const res = await fetch(url, {
+        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          ...options?.headers,
+        },
+        ...options,
+      });
+
+      clearTimeout(timeoutId);
+      return await handleApiResponse<T>(res);
+    } catch (err: any) {
+      clearTimeout(timeoutId);
+      lastError = err;
+
+      // Only retry on network errors or timeouts (cold starts), not HTTP 4xx errors
+      const isTimeout = err.name === 'AbortError' || err.status === 408;
+      const isNetworkError = err instanceof ApiError && err.status === 0;
+
+      if ((isTimeout || isNetworkError) && attempt < maxRetries) {
+        // Exponential backoff before retry (1.5s, 3s...)
+        const delay = Math.min(1500 * Math.pow(2, attempt), 5000);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        continue;
+      }
+
+      if (err.name === 'AbortError') {
+        throw new ApiError(
+          'Request timed out. The server took too long to respond. It may be waking up from standby, please try again in a few moments.',
+          408
+        );
+      }
+
+      if (err instanceof ApiError) {
+        throw err;
+      }
+
+      throw new ApiError(
+        'Unable to connect to the AIOps service. Please check your network connection.',
+        0
+      );
     }
-    throw new ApiError(
-      'Unable to connect to the AIOps service. Please check your network connection.',
-      0
-    );
-  } finally {
-    clearTimeout(timeoutId);
   }
+
+  throw lastError;
+}
+
+async function handleApiResponse<T>(res: Response): Promise<T> {
 
   const contentType = res.headers.get('content-type') || '';
 
@@ -174,9 +212,12 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
-  getProjects: () => fetchApi<Project[]>('/api/projects'),
+  getProjects: (userId?: string) => {
+    const query = userId ? `?user_id=${encodeURIComponent(userId)}` : '';
+    return fetchApi<Project[]>(`/api/projects${query}`);
+  },
 
-  createProject: (payload: { name: string; description?: string }) =>
+  createProject: (payload: { name: string; description?: string; user_id?: string }) =>
     fetchApi<{ status: string; project_id: string; name: string }>('/api/projects', {
       method: 'POST',
       body: JSON.stringify(payload),

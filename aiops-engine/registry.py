@@ -25,12 +25,22 @@ def _get_sqlite_connection() -> sqlite3.Connection:
         """
         CREATE TABLE IF NOT EXISTS projects (
             id TEXT PRIMARY KEY,
+            user_id TEXT,
             name TEXT NOT NULL,
             description TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         """
     )
+    # Ensure user_id column exists if table was created previously without it
+    try:
+        col_cursor = conn.execute("PRAGMA table_info(projects);")
+        columns = [row["name"] for row in col_cursor.fetchall()]
+        if "user_id" not in columns:
+            conn.execute("ALTER TABLE projects ADD COLUMN user_id TEXT;")
+    except Exception as e:
+        print(f"[Service Registry] SQLite migration notice: {e}")
+
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS services (
@@ -70,6 +80,7 @@ def init_registry_db() -> None:
                         """
                         CREATE TABLE IF NOT EXISTS projects (
                             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                            user_id UUID,
                             name TEXT NOT NULL,
                             description TEXT,
                             created_at TIMESTAMPTZ DEFAULT NOW()
@@ -77,6 +88,12 @@ def init_registry_db() -> None:
                         """
                     )
                 )
+
+                # Migration for existing projects table without user_id
+                try:
+                    conn.execute(text("ALTER TABLE projects ADD COLUMN IF NOT EXISTS user_id UUID;"))
+                except Exception:
+                    pass
 
                 # 2. Services Table
                 conn.execute(
@@ -102,30 +119,41 @@ def init_registry_db() -> None:
             print(f"[Service Registry] Supabase initialization notice: {e}")
 
 
-def register_project(name: str, description: str = "") -> str:
-    """Registers a new project in Supabase PostgreSQL (or SQLite fallback) and returns its UUID."""
+def register_project(name: str, description: str = "", user_id: str | None = None) -> str:
+    """Registers a new project in Supabase PostgreSQL (or SQLite fallback) scoped to user_id and returns its UUID."""
     project_id = str(uuid.uuid4())
     engine = get_db_engine()
     if engine is not None:
         try:
             with engine.begin() as conn:
-                conn.execute(
-                    text(
-                        """
-                        INSERT INTO projects (id, name, description)
-                        VALUES (CAST(:id AS UUID), :name, :description);
-                        """
-                    ),
-                    {"id": project_id, "name": name, "description": description},
-                )
+                if user_id:
+                    conn.execute(
+                        text(
+                            """
+                            INSERT INTO projects (id, user_id, name, description)
+                            VALUES (CAST(:id AS UUID), CAST(:user_id AS UUID), :name, :description);
+                            """
+                        ),
+                        {"id": project_id, "user_id": user_id, "name": name, "description": description},
+                    )
+                else:
+                    conn.execute(
+                        text(
+                            """
+                            INSERT INTO projects (id, name, description)
+                            VALUES (CAST(:id AS UUID), :name, :description);
+                            """
+                        ),
+                        {"id": project_id, "name": name, "description": description},
+                    )
             return project_id
         except Exception as e:
             print(f"[Service Registry] Supabase register_project error: {e}")
 
     with _get_sqlite_connection() as conn:
         conn.execute(
-            "INSERT INTO projects (id, name, description) VALUES (?, ?, ?)",
-            (project_id, name, description),
+            "INSERT INTO projects (id, user_id, name, description) VALUES (?, ?, ?, ?)",
+            (project_id, user_id, name, description),
         )
         conn.commit()
     return project_id
@@ -367,17 +395,38 @@ def list_services(project_id: str | None = None) -> list[dict[str, Any]]:
         return []
 
 
-def list_projects() -> list[dict[str, Any]]:
-    """Lists all registered projects from Supabase or SQLite."""
+def list_projects(user_id: str | None = None) -> list[dict[str, Any]]:
+    """Lists registered projects from Supabase or SQLite, optionally filtered by user_id."""
     engine = get_db_engine()
     if engine is not None:
         try:
             with engine.connect() as conn:
-                result = conn.execute(text("SELECT id, name, description, created_at FROM projects ORDER BY created_at ASC;"))
+                if user_id:
+                    query = text(
+                        """
+                        SELECT id, user_id, name, description, created_at
+                        FROM projects
+                        WHERE user_id = CAST(:user_id AS UUID) OR user_id::text = :user_id_text
+                        ORDER BY created_at ASC;
+                        """
+                    )
+                    result = conn.execute(query, {"user_id": user_id, "user_id_text": str(user_id)})
+                else:
+                    query = text(
+                        """
+                        SELECT id, user_id, name, description, created_at
+                        FROM projects
+                        ORDER BY created_at ASC;
+                        """
+                    )
+                    result = conn.execute(query)
+
                 rows = []
                 for row in result.fetchall():
                     item = dict(row._mapping)
                     item["id"] = str(item.get("id"))
+                    if item.get("user_id"):
+                        item["user_id"] = str(item.get("user_id"))
                     rows.append(item)
                 return rows
         except Exception as e:
@@ -386,7 +435,13 @@ def list_projects() -> list[dict[str, Any]]:
     try:
         with _get_sqlite_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT id, name, description, created_at FROM projects")
+            if user_id:
+                cursor.execute(
+                    "SELECT id, user_id, name, description, created_at FROM projects WHERE user_id = ? ORDER BY created_at ASC",
+                    (str(user_id),),
+                )
+            else:
+                cursor.execute("SELECT id, user_id, name, description, created_at FROM projects ORDER BY created_at ASC")
             return [dict(row) for row in cursor.fetchall()]
     except Exception as e:
         print(f"[Service Registry] SQLite list_projects error: {e}")

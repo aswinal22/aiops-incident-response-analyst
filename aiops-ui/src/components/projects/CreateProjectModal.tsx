@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useAuth } from '../../context/AuthContext';
 import { api } from '../../lib/api';
 import { FolderPlus, X, AlertCircle } from 'lucide-react';
 
@@ -9,6 +10,7 @@ interface CreateProjectModalProps {
 }
 
 export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, onClose, onCreated }) => {
+  const { user } = useAuth();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
@@ -30,6 +32,7 @@ export const CreateProjectModal: React.FC<CreateProjectModalProps> = ({ isOpen, 
       const res = await api.createProject({
         name: name.trim(),
         description: description.trim(),
+        user_id: user?.id,
       });
       onCreated(res);
       onClose();

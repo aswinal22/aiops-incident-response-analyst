@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useAuth } from '../context/AuthContext';
 import { api } from '../lib/api';
 import { Project, Service } from '../lib/types';
 import { ServiceList } from '../components/services/ServiceList';
@@ -6,6 +7,7 @@ import { RegisterServiceModal } from '../components/services/RegisterServiceModa
 import { Server, RefreshCw } from 'lucide-react';
 
 export const ServicesPage: React.FC = () => {
+  const { user } = useAuth();
   const [services, setServices] = useState<Service[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -13,7 +15,7 @@ export const ServicesPage: React.FC = () => {
 
   const fetchData = async () => {
     try {
-      const [svcData, projData] = await Promise.all([api.getServices(), api.getProjects()]);
+      const [svcData, projData] = await Promise.all([api.getServices(), api.getProjects(user?.id)]);
       setServices(svcData || []);
       setProjects(projData || []);
     } catch (err) {

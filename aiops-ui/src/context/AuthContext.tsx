@@ -36,6 +36,10 @@ const STORAGE_KEYS = {
   ACTIVE_SERVICE: 'aiops_active_service',
 };
 
+function getUserPatKey(userId?: string): string {
+  return userId ? `aiops_github_pat_${userId}` : STORAGE_KEYS.PAT;
+}
+
 function getSafeItem<T>(key: string): T | null {
   try {
     const saved = localStorage.getItem(key);
@@ -49,7 +53,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<UserAccount | null>(() => getSafeItem<UserAccount>(STORAGE_KEYS.USER));
   const [githubPat, setGithubPat] = useState<string | null>(() => {
     try {
-      return localStorage.getItem(STORAGE_KEYS.PAT);
+      const cachedUser = getSafeItem<UserAccount>(STORAGE_KEYS.USER);
+      if (cachedUser?.id) {
+        const userScopedPat = localStorage.getItem(getUserPatKey(cachedUser.id));
+        if (userScopedPat) return userScopedPat;
+      }
+      return null;
     } catch {
       return null;
     }
@@ -80,8 +89,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Load Projects and Services from Backend API
   const refreshProjectsAndServices = async () => {
     try {
+      const currentUserId = user?.id;
       const [projList, svcList] = await Promise.all([
-        api.getProjects().catch(() => []),
+        api.getProjects(currentUserId).catch(() => []),
         api.getServices().catch(() => []),
       ]);
 
@@ -209,6 +219,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setUser(userAcc);
       localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userAcc));
+
+      // Load user-scoped PAT if previously saved for this account
+      const userPat = userAcc.id ? localStorage.getItem(getUserPatKey(userAcc.id)) : null;
+      setGithubPat(userPat);
+
       await refreshProjectsAndServices();
     } catch (err: any) {
       throw new Error(err.message || 'Login failed.');
@@ -239,6 +254,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setUser(userAcc);
       localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userAcc));
+
+      // Newly registered account starts with a fresh empty PAT
+      setGithubPat(null);
+      setPatStatus('missing');
+
       await refreshProjectsAndServices();
       // Only open onboarding wizard once for newly created user accounts
       setIsOnboardingOpen(true);
@@ -266,6 +286,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setUser(demoAcc);
       localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(demoAcc));
+
+      const demoPat = localStorage.getItem(getUserPatKey(demoAcc.id));
+      setGithubPat(demoPat);
+
       await refreshProjectsAndServices();
     } finally {
       setIsLoading(false);
@@ -273,30 +297,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => {
+    const currentUserId = user?.id;
     setUser(null);
+    setGithubPat(null);
+    setPatStatus('missing');
+    setProjects([]);
     setActiveProjectState(null);
     setActiveServiceState(null);
     setSessionToast(null);
     try {
       localStorage.removeItem(STORAGE_KEYS.USER);
+      localStorage.removeItem(STORAGE_KEYS.PAT);
       localStorage.removeItem(STORAGE_KEYS.ACTIVE_PROJECT);
       localStorage.removeItem(STORAGE_KEYS.ACTIVE_SERVICE);
+      if (currentUserId) {
+        localStorage.removeItem(getUserPatKey(currentUserId));
+      }
     } catch {}
   };
 
   const saveGitHubPat = async (pat: string) => {
     const clean = pat.trim();
+    const patKey = getUserPatKey(user?.id);
     if (clean) {
       await validateGitHubPat(clean);
       setGithubPat(clean);
       setPatStatus('connected');
       try {
+        localStorage.setItem(patKey, clean);
+        // Also keep STORAGE_KEYS.PAT in sync for legacy references
         localStorage.setItem(STORAGE_KEYS.PAT, clean);
       } catch {}
     } else {
       setGithubPat(null);
       setPatStatus('missing');
       try {
+        localStorage.removeItem(patKey);
         localStorage.removeItem(STORAGE_KEYS.PAT);
       } catch {}
     }
