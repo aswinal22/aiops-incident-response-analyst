@@ -116,66 +116,68 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Check 24-Hour Expiry & Backend Token Verification on Mount / Tab Reopen
   useEffect(() => {
     const verifyCachedSession = async () => {
-      const cached = getSafeItem<UserAccount>(STORAGE_KEYS.USER);
-      if (!cached) {
-        setUser(null);
-        setIsLoading(false);
-        return;
-      }
-
-      const now = Date.now();
-      // 1. Strict 24-Hour Expiration Check
-      if (cached.expires_at && now > cached.expires_at) {
-        console.warn('[AIOps Auth] Cached 24-hour token expired. Requiring re-authentication.');
-        logout();
-        setIsLoading(false);
-        return;
-      }
-
-      // 2. Token backend verification
-      if (cached.token) {
-        try {
-          const res = await api.verifyToken(cached.token);
-          if (res && res.status === 'valid') {
-            const verifiedAccount: UserAccount = {
-              ...cached,
-              ...res.user,
-              name: res.user?.full_name || cached.name,
-              expires_at: res.expires_at || cached.expires_at,
-            };
-            setUser(verifiedAccount);
-            localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(verifiedAccount));
-
-            // Trigger Pop-up Toast confirming backend check
-            setSessionToast({
-              username: verifiedAccount.username,
-              name: verifiedAccount.name,
-              expiresInHours: res.expires_in_hours || 24,
-              isBackendVerified: true,
-            });
-          } else {
-            logout();
-          }
-        } catch (err) {
-          console.warn('[AIOps Auth] Backend check notice (offline or network fallback):', err);
-          // Graceful fallback for offline development or Vercel static mode
-          const remainingHours = cached.expires_at ? Math.max(0, (cached.expires_at - now) / 3600000) : 24;
-          setSessionToast({
-            username: cached.username,
-            name: cached.name,
-            expiresInHours: remainingHours,
-            isBackendVerified: false,
-          });
+      try {
+        const cached = getSafeItem<UserAccount>(STORAGE_KEYS.USER);
+        if (!cached) {
+          setUser(null);
+          return;
         }
-      } else {
-        // Stamp 24-hour expiration for legacy sessions
-        const expires_at = Date.now() + 24 * 3600 * 1000;
-        const updated = { ...cached, expires_at };
-        setUser(updated);
-        localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(updated));
-      }
 
-      setIsLoading(false);
+        const now = Date.now();
+        // 1. Strict 24-Hour Expiration Check
+        if (cached.expires_at && now > cached.expires_at) {
+          console.warn('[AIOps Auth] Cached 24-hour token expired. Requiring re-authentication.');
+          logout();
+          return;
+        }
+
+        // 2. Token backend verification
+        if (cached.token) {
+          try {
+            const res = await api.verifyToken(cached.token);
+            if (res && res.status === 'valid') {
+              const verifiedAccount: UserAccount = {
+                ...cached,
+                ...res.user,
+                name: res.user?.full_name || cached.name,
+                expires_at: res.expires_at || cached.expires_at,
+              };
+              setUser(verifiedAccount);
+              localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(verifiedAccount));
+
+              // Trigger Pop-up Toast confirming backend check
+              setSessionToast({
+                username: verifiedAccount.username,
+                name: verifiedAccount.name,
+                expiresInHours: res.expires_in_hours || 24,
+                isBackendVerified: true,
+              });
+            } else {
+              logout();
+            }
+          } catch (err) {
+            console.warn('[AIOps Auth] Backend check notice (offline or network fallback):', err);
+            // Graceful fallback for offline development or network fallback
+            const remainingHours = cached.expires_at ? Math.max(0, (cached.expires_at - now) / 3600000) : 24;
+            setSessionToast({
+              username: cached.username,
+              name: cached.name,
+              expiresInHours: remainingHours,
+              isBackendVerified: false,
+            });
+          }
+        } else {
+          // Stamp 24-hour expiration for legacy sessions
+          const expires_at = Date.now() + 24 * 3600 * 1000;
+          const updated = { ...cached, expires_at };
+          setUser(updated);
+          localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(updated));
+        }
+      } catch (err) {
+        console.error('[AIOps Auth] Session verification error:', err);
+      } finally {
+        setIsLoading(false);
+      }
     };
 
     verifyCachedSession();

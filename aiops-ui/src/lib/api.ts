@@ -21,8 +21,13 @@ export async function fetchApi<T>(endpoint: string, options?: RequestInit): Prom
   const url = `${API_BASE}${endpoint}`;
   let res: Response;
 
+  // 8-second timeout guard to prevent infinite UI hangs on slow/cold connections
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
+
   try {
     res = await fetch(url, {
+      signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
         ...options?.headers,
@@ -30,10 +35,15 @@ export async function fetchApi<T>(endpoint: string, options?: RequestInit): Prom
       ...options,
     });
   } catch (networkErr: any) {
+    if (networkErr.name === 'AbortError') {
+      throw new ApiError('Request timed out. The server took too long to respond.', 408);
+    }
     throw new ApiError(
       'Unable to connect to the AIOps service. Please check your network connection.',
       0
     );
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   const contentType = res.headers.get('content-type') || '';
